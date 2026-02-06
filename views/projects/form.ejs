@@ -1,0 +1,63 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <a href="/projects" class="back-link">← Retour aux projets</a>
+    <h1 class="page-title"><%= project ? 'Modifier' : 'Nouveau' %> projet</h1>
+  </div>
+</div>
+
+<div class="form-container">
+  <% if (typeof error !== 'undefined' && error) { %>
+    <div class="alert alert-error"><%= error %></div>
+  <% } %>
+
+  <form method="POST" action="/projects/new" class="form-card">
+    <div class="form-row">
+      <div class="form-group form-group-lg">
+        <label for="name">Nom du projet *</label>
+        <input type="text" id="name" name="name" required placeholder="Ex: Site Web Corporate" value="<%= project ? project.name : '' %>">
+      </div>
+      <div class="form-group">
+        <label for="code">Code *</label>
+        <input type="text" id="code" name="code" required placeholder="Ex: SWC" maxlength="6" style="text-transform:uppercase" value="<%= project ? project.code : '' %>">
+        <span class="form-hint">3-6 caractères, unique</span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" rows="3" placeholder="Décrivez le projet..."><%= project ? project.description : '' %></textarea>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="priority">Priorité</label>
+        <select id="priority" name="priority">
+          <option value="low">🟢 Basse</option>
+          <option value="medium" selected>🟡 Moyenne</option>
+          <option value="high">🟠 Haute</option>
+          <option value="critical">🔴 Critique</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="color">Couleur</label>
+        <div class="color-picker">
+          <% ['#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ef4444','#14b8a6'].forEach(c => { %>
+            <label class="color-option">
+              <input type="radio" name="color" value="<%= c %>" <%= c === '#6366f1' ? 'checked' : '' %>>
+              <span class="color-swatch" style="background-color: <%= c %>"></span>
+            </label>
+          <% }) %>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <a href="/projects" class="btn btn-ghost">Annuler</a>
+      <button type="submit" class="btn btn-primary">Créer le projet</button>
+    </div>
+  </form>
+</div>
+
+<%- include('../partials/foot') %>

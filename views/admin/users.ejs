@@ -1,0 +1,97 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <a href="/admin" class="back-link">← Dashboard</a>
+    <h1 class="page-title">Gestion des utilisateurs</h1>
+    <p class="page-subtitle"><%= users.length %> utilisateur<%= users.length > 1 ? 's' : '' %> enregistrés</p>
+  </div>
+</div>
+
+<% if (typeof query !== 'undefined' && query.error === 'duplicate') { %>
+  <div class="alert alert-error">⚠️ Erreur : ce nom d'utilisateur ou email existe déjà.</div>
+<% } %>
+
+<div class="users-grid">
+  <% users.forEach(u => { %>
+    <div class="user-card-full <%= u.is_active ? '' : 'inactive' %>">
+      <div class="user-card-header">
+        <div class="avatar" style="background-color: <%= u.avatar_color %>"><%= u.full_name.charAt(0) %></div>
+        <div>
+          <div class="user-card-name"><%= u.full_name %></div>
+          <div class="user-card-email"><%= u.email %></div>
+        </div>
+      </div>
+
+      <span class="user-card-role role-<%= u.role %>">
+        <%= u.role === 'admin' ? '👑 Admin' : u.role === 'developer' ? '👨‍💻 Développeur' : '🎧 Support' %>
+      </span>
+
+      <div class="user-card-stats">
+        <div class="user-stat">
+          <div class="user-stat-value"><%= u.active_tasks || 0 %></div>
+          <div class="user-stat-label">Tâches</div>
+        </div>
+        <div class="user-stat">
+          <div class="user-stat-value"><%= u.active_tickets || 0 %></div>
+          <div class="user-stat-label">Tickets</div>
+        </div>
+        <div class="user-stat">
+          <div class="user-stat-value" style="color: <%= u.is_active ? 'var(--success)' : 'var(--danger)' %>">
+            <%= u.is_active ? '✓' : '✗' %>
+          </div>
+          <div class="user-stat-label">Statut</div>
+        </div>
+      </div>
+
+      <div class="user-card-actions">
+        <span class="text-sm text-muted" style="flex:1">@<%= u.username %></span>
+        <% if (u.id !== user.id) { %>
+          <form method="POST" action="/admin/users/<%= u.id %>/toggle" style="margin:0">
+            <button type="submit" class="btn btn-sm <%= u.is_active ? 'btn-warning' : 'btn-primary' %>">
+              <%= u.is_active ? 'Désactiver' : 'Activer' %>
+            </button>
+          </form>
+        <% } else { %>
+          <span class="badge badge-status-done">Vous</span>
+        <% } %>
+      </div>
+    </div>
+  <% }) %>
+
+  <!-- New User Card -->
+  <div class="new-user-card">
+    <h3>➕ Nouvel utilisateur</h3>
+    <form method="POST" action="/admin/users/create">
+      <div class="form-group">
+        <label>Nom complet</label>
+        <input type="text" name="full_name" required placeholder="Jean Dupont">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Identifiant</label>
+          <input type="text" name="username" required placeholder="jdupont">
+        </div>
+        <div class="form-group">
+          <label>Rôle</label>
+          <select name="role" required>
+            <option value="developer">Développeur</option>
+            <option value="support">Support</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" name="email" required placeholder="jean@entreprise.com">
+      </div>
+      <div class="form-group">
+        <label>Mot de passe</label>
+        <input type="password" name="password" required minlength="4" placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Créer l'utilisateur</button>
+    </form>
+  </div>
+</div>
+
+<%- include('../partials/foot') %>

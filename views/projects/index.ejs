@@ -1,0 +1,52 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Projets</h1>
+    <p class="page-subtitle"><%= projects.length %> projet<%= projects.length > 1 ? 's' : '' %></p>
+  </div>
+  <a href="/projects/new" class="btn btn-primary">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+    Nouveau projet
+  </a>
+</div>
+
+<div class="projects-grid">
+  <% projects.forEach(project => { %>
+    <div class="project-card">
+      <div class="project-card-header">
+        <div class="project-color" style="background-color: <%= project.color %>"></div>
+        <div class="project-meta">
+          <span class="project-code"><%= project.code %></span>
+          <span class="badge badge-<%= project.status %>"><%= project.status %></span>
+        </div>
+      </div>
+      <h3 class="project-name"><%= project.name %></h3>
+      <p class="project-desc"><%= project.description || 'Aucune description' %></p>
+      <div class="project-progress">
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: <%= project.task_count > 0 ? Math.round((project.done_count / project.task_count) * 100) : 0 %>%"></div>
+        </div>
+        <span class="progress-text"><%= project.done_count %>/<%= project.task_count %> tâches</span>
+      </div>
+      <div class="project-card-footer">
+        <span class="priority-dot priority-<%= project.priority %>"></span>
+        <span><%= project.priority %></span>
+        <a href="/projects/<%= project.id %>/board" class="btn btn-sm btn-ghost">
+          Voir le board →
+        </a>
+      </div>
+    </div>
+  <% }) %>
+
+  <% if (projects.length === 0) { %>
+    <div class="empty-state">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      <h3>Aucun projet</h3>
+      <p>Créez votre premier projet pour commencer</p>
+      <a href="/projects/new" class="btn btn-primary">Créer un projet</a>
+    </div>
+  <% } %>
+</div>
+
+<%- include('../partials/foot') %>

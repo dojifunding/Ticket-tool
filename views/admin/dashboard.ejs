@@ -1,0 +1,138 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Dashboard Administration</h1>
+    <p class="page-subtitle">Vue d'ensemble de l'activité</p>
+  </div>
+  <div class="admin-quick-links">
+    <a href="/projects" class="btn btn-ghost">👨‍💻 Projets</a>
+    <a href="/tickets" class="btn btn-ghost">🎧 Tickets</a>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="admin-stats-grid">
+  <div class="admin-stat-card">
+    <div class="admin-stat-icon" style="background: #6366f120; color: #6366f1">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+    </div>
+    <div class="admin-stat-info">
+      <div class="admin-stat-value"><%= stats.users %></div>
+      <div class="admin-stat-label">Utilisateurs actifs</div>
+    </div>
+  </div>
+  <div class="admin-stat-card">
+    <div class="admin-stat-icon" style="background: #3b82f620; color: #3b82f6">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+    </div>
+    <div class="admin-stat-info">
+      <div class="admin-stat-value"><%= stats.projects %></div>
+      <div class="admin-stat-label">Projets actifs</div>
+    </div>
+  </div>
+  <div class="admin-stat-card">
+    <div class="admin-stat-icon" style="background: #f59e0b20; color: #f59e0b">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+    </div>
+    <div class="admin-stat-info">
+      <div class="admin-stat-value"><%= stats.activeTasks %></div>
+      <div class="admin-stat-label">Tâches en cours</div>
+    </div>
+  </div>
+  <div class="admin-stat-card">
+    <div class="admin-stat-icon" style="background: #10b98120; color: #10b981">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5v2"/><path d="M15 11v2"/><path d="M15 17v2"/><path d="M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V7a2 2 0 0 1 2-2z"/></svg>
+    </div>
+    <div class="admin-stat-info">
+      <div class="admin-stat-value"><%= stats.openTickets %></div>
+      <div class="admin-stat-label">Tickets ouverts</div>
+    </div>
+  </div>
+  <div class="admin-stat-card admin-stat-warning">
+    <div class="admin-stat-icon" style="background: #ef444420; color: #ef4444">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/></svg>
+    </div>
+    <div class="admin-stat-info">
+      <div class="admin-stat-value"><%= stats.urgentTickets %></div>
+      <div class="admin-stat-label">Tickets urgents</div>
+    </div>
+  </div>
+  <div class="admin-stat-card">
+    <div class="admin-stat-icon" style="background: #8b5cf620; color: #8b5cf6">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/></svg>
+    </div>
+    <div class="admin-stat-info">
+      <div class="admin-stat-value"><%= stats.escalations %></div>
+      <div class="admin-stat-label">Escalades actives</div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts Row -->
+<div class="admin-charts-row">
+  <div class="chart-card">
+    <h3>Tickets par statut</h3>
+    <div class="mini-chart">
+      <% const ticketTotal = Object.values(ticketsByStatus).reduce((a,b) => a+b, 0) || 1;
+         const tColors = { open: '#10b981', in_progress: '#3b82f6', waiting: '#f59e0b', resolved: '#8b5cf6', closed: '#64748b' };
+         const tLabels = { open: 'Ouvert', in_progress: 'En cours', waiting: 'En attente', resolved: 'Résolu', closed: 'Fermé' };
+      %>
+      <div class="bar-chart">
+        <% Object.entries(ticketsByStatus).forEach(([key, val]) => { %>
+          <div class="bar-item">
+            <div class="bar-label"><%= tLabels[key] %></div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width: <%= (val / ticketTotal * 100) %>%; background-color: <%= tColors[key] %>"></div>
+            </div>
+            <div class="bar-value"><%= val %></div>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+  <div class="chart-card">
+    <h3>Tâches par statut</h3>
+    <div class="mini-chart">
+      <% const taskTotal = Object.values(tasksByStatus).reduce((a,b) => a+b, 0) || 1;
+         const sColors = { backlog: '#64748b', todo: '#6366f1', in_progress: '#f59e0b', review: '#8b5cf6', done: '#10b981' };
+         const sLabels = { backlog: 'Backlog', todo: 'À faire', in_progress: 'En cours', review: 'En revue', done: 'Terminé' };
+      %>
+      <div class="bar-chart">
+        <% Object.entries(tasksByStatus).forEach(([key, val]) => { %>
+          <div class="bar-item">
+            <div class="bar-label"><%= sLabels[key] %></div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width: <%= (val / taskTotal * 100) %>%; background-color: <%= sColors[key] %>"></div>
+            </div>
+            <div class="bar-value"><%= val %></div>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Activity Log -->
+<div class="activity-section">
+  <h3>Activité récente</h3>
+  <div class="activity-list">
+    <% recentActivity.forEach(act => { %>
+      <div class="activity-item">
+        <div class="avatar avatar-xs" style="background-color: <%= act.avatar_color %>"><%= act.full_name.charAt(0) %></div>
+        <div class="activity-info">
+          <strong><%= act.full_name %></strong>
+          <span class="activity-action"><%= act.action %></span>
+          <span class="activity-entity"><%= act.entity_type %></span>
+          <% if (act.details) { %><span class="activity-details">— <%= act.details %></span><% } %>
+        </div>
+        <time class="activity-time"><%= new Date(act.created_at).toLocaleString('fr-FR') %></time>
+      </div>
+    <% }) %>
+    <% if (recentActivity.length === 0) { %>
+      <p class="text-muted">Aucune activité enregistrée.</p>
+    <% } %>
+  </div>
+</div>
+
+<%- include('../partials/foot') %>

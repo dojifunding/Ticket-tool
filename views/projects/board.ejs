@@ -1,0 +1,164 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <a href="/projects" class="back-link">← Projets</a>
+    <h1 class="page-title">
+      <span class="project-color-dot" style="background-color: <%= project.color %>"></span>
+      <%= project.name %>
+    </h1>
+    <p class="page-subtitle"><%= project.code %> — Board Kanban</p>
+  </div>
+  <button class="btn btn-primary" onclick="openNewTaskModal()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+    Nouvelle tâche
+  </button>
+</div>
+
+<div class="kanban-board" id="kanbanBoard">
+  <% const statusLabels = { backlog: 'Backlog', todo: 'À faire', in_progress: 'En cours', review: 'En revue', done: 'Terminé' };
+     const statusColors = { backlog: '#64748b', todo: '#6366f1', in_progress: '#f59e0b', review: '#8b5cf6', done: '#10b981' };
+     Object.entries(columns).forEach(([status, tasks]) => { %>
+  <div class="kanban-column" data-status="<%= status %>">
+    <div class="kanban-column-header">
+      <div class="column-title">
+        <span class="column-dot" style="background-color: <%= statusColors[status] %>"></span>
+        <span><%= statusLabels[status] %></span>
+        <span class="column-count"><%= tasks.length %></span>
+      </div>
+    </div>
+    <div class="kanban-cards" data-status="<%= status %>"
+         ondrop="dropTask(event)" ondragover="event.preventDefault(); this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')">
+      <% tasks.forEach(task => { %>
+        <div class="kanban-card" draggable="true" data-task-id="<%= task.id %>"
+             ondragstart="dragTask(event, <%= task.id %>)">
+          <div class="card-top">
+            <span class="task-type task-type-<%= task.type %>">
+              <%= task.type === 'bug' ? '🐛' : task.type === 'feature' ? '✨' : task.type === 'escalation' ? '🔺' : task.type === 'improvement' ? '💡' : '📋' %>
+              <%= task.type %>
+            </span>
+            <span class="priority-dot priority-<%= task.priority %>" title="<%= task.priority %>"></span>
+          </div>
+          <a href="/projects/<%= project.id %>/tasks/<%= task.id %>" class="card-title"><%= task.title %></a>
+          <% if (task.assignee_name) { %>
+            <div class="card-assignee">
+              <div class="avatar avatar-xs" style="background-color: <%= task.assignee_color %>"><%= task.assignee_name.charAt(0) %></div>
+              <span><%= task.assignee_name %></span>
+            </div>
+          <% } %>
+          <% if (task.due_date) { %>
+            <div class="card-due <% if (new Date(task.due_date) < new Date()) { %>overdue<% } %>">
+              📅 <%= new Date(task.due_date).toLocaleDateString('fr-FR') %>
+            </div>
+          <% } %>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+  <% }) %>
+</div>
+
+<!-- ─── New Task Modal ──────────────────────────── -->
+<div class="modal-overlay" id="newTaskModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Nouvelle tâche</h2>
+      <button class="modal-close" onclick="closeModal('newTaskModal')">×</button>
+    </div>
+    <form method="POST" action="/projects/<%= project.id %>/tasks">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="taskTitle">Titre *</label>
+          <input type="text" id="taskTitle" name="title" required placeholder="Ex: Corriger le bug de connexion">
+        </div>
+        <div class="form-group">
+          <label for="taskDesc">Description</label>
+          <textarea id="taskDesc" name="description" rows="3" placeholder="Décrivez la tâche..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskStatus">Statut</label>
+            <select id="taskStatus" name="status">
+              <option value="backlog">Backlog</option>
+              <option value="todo" selected>À faire</option>
+              <option value="in_progress">En cours</option>
+              <option value="review">En revue</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="taskPriority">Priorité</label>
+            <select id="taskPriority" name="priority">
+              <option value="low">🟢 Basse</option>
+              <option value="medium" selected>🟡 Moyenne</option>
+              <option value="high">🟠 Haute</option>
+              <option value="critical">🔴 Critique</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskType">Type</label>
+            <select id="taskType" name="type">
+              <option value="task">📋 Tâche</option>
+              <option value="bug">🐛 Bug</option>
+              <option value="feature">✨ Fonctionnalité</option>
+              <option value="improvement">💡 Amélioration</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="taskAssigned">Assigné à</label>
+            <select id="taskAssigned" name="assigned_to">
+              <option value="">Non assigné</option>
+              <% developers.forEach(dev => { %>
+                <option value="<%= dev.id %>"><%= dev.full_name %></option>
+              <% }) %>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="taskDue">Date limite</label>
+          <input type="date" id="taskDue" name="due_date">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('newTaskModal')">Annuler</button>
+        <button type="submit" class="btn btn-primary">Créer la tâche</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openNewTaskModal() {
+  document.getElementById('newTaskModal').classList.add('active');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('active');
+}
+function dragTask(e, taskId) {
+  e.dataTransfer.setData('text/plain', taskId);
+  e.target.classList.add('dragging');
+}
+function dropTask(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const taskId = e.dataTransfer.getData('text/plain');
+  const newStatus = e.currentTarget.dataset.status;
+  const card = document.querySelector(`[data-task-id="${taskId}"]`);
+  if (card) {
+    card.classList.remove('dragging');
+    e.currentTarget.appendChild(card);
+  }
+  fetch(`/api/tasks/${taskId}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: newStatus })
+  });
+}
+// Close modal on overlay click
+document.getElementById('newTaskModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal('newTaskModal');
+});
+</script>
+
+<%- include('../partials/foot') %>

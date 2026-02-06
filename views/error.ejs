@@ -1,0 +1,29 @@
+<% if (user) { %>
+  <%- include('partials/head') %>
+  <div class="error-page">
+    <div class="error-code"><%= code %></div>
+    <h1><%= title %></h1>
+    <p><%= message %></p>
+    <a href="/" class="btn btn-primary">Retour à l'accueil</a>
+  </div>
+  <%- include('partials/foot') %>
+<% } else { %>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Erreur — ProjectHub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="login-body">
+  <div class="error-page">
+    <div class="error-code"><%= code %></div>
+    <h1><%= title %></h1>
+    <p><%= message %></p>
+    <a href="/login" class="btn btn-primary">Connexion</a>
+  </div>
+</body>
+</html>
+<% } %>

@@ -1,0 +1,75 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <a href="/tickets" class="back-link">← Tickets</a>
+    <h1 class="page-title">Nouveau ticket</h1>
+  </div>
+</div>
+
+<div class="form-container">
+  <form method="POST" action="/tickets/new" class="form-card">
+    <div class="form-group">
+      <label for="subject">Sujet *</label>
+      <input type="text" id="subject" name="subject" required placeholder="Ex: Impossible de se connecter au compte">
+    </div>
+
+    <div class="form-group">
+      <label for="description">Description détaillée *</label>
+      <textarea id="description" name="description" rows="5" required
+        placeholder="Décrivez le problème en détail : ce que l'utilisateur a fait, ce qu'il s'est passé, le message d'erreur éventuel..."></textarea>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="client_name">Nom du client</label>
+        <input type="text" id="client_name" name="client_name" placeholder="Jean Dupont">
+      </div>
+      <div class="form-group">
+        <label for="client_email">Email du client</label>
+        <input type="email" id="client_email" name="client_email" placeholder="jean@example.com">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="priority">Priorité</label>
+        <select id="priority" name="priority">
+          <option value="low">🟢 Basse</option>
+          <option value="medium" selected>🟡 Moyenne</option>
+          <option value="high">🟠 Haute</option>
+          <option value="urgent">🔴 Urgent</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="category">Catégorie</label>
+        <select id="category" name="category">
+          <option value="general">Général</option>
+          <option value="bug">Bug</option>
+          <option value="question">Question</option>
+          <option value="feature_request">Demande de fonctionnalité</option>
+          <option value="account">Compte</option>
+          <option value="billing">Facturation</option>
+          <option value="other">Autre</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="assigned_to">Assigner à</label>
+      <select id="assigned_to" name="assigned_to">
+        <option value="">Non assigné</option>
+        <% agents.forEach(a => { %>
+          <option value="<%= a.id %>"><%= a.full_name %></option>
+        <% }) %>
+      </select>
+    </div>
+
+    <div class="form-actions">
+      <a href="/tickets" class="btn btn-ghost">Annuler</a>
+      <button type="submit" class="btn btn-primary">Créer le ticket</button>
+    </div>
+  </form>
+</div>
+
+<%- include('../partials/foot') %>

@@ -1,0 +1,112 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Tickets Support</h1>
+    <p class="page-subtitle"><%= stats.total %> ticket<%= stats.total > 1 ? 's' : '' %> au total</p>
+  </div>
+  <a href="/tickets/new" class="btn btn-primary">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+    Nouveau ticket
+  </a>
+</div>
+
+<!-- Stats Cards -->
+<div class="stats-row">
+  <div class="stat-card stat-open">
+    <div class="stat-value"><%= stats.open %></div>
+    <div class="stat-label">Ouverts</div>
+  </div>
+  <div class="stat-card stat-progress">
+    <div class="stat-value"><%= stats.in_progress %></div>
+    <div class="stat-label">En cours</div>
+  </div>
+  <div class="stat-card stat-waiting">
+    <div class="stat-value"><%= stats.waiting %></div>
+    <div class="stat-label">En attente</div>
+  </div>
+  <div class="stat-card stat-resolved">
+    <div class="stat-value"><%= stats.resolved %></div>
+    <div class="stat-label">Résolus</div>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="filters-bar">
+  <form method="GET" action="/tickets" class="filters-form">
+    <select name="status" onchange="this.form.submit()">
+      <option value="all">Tous les statuts</option>
+      <option value="open" <%= filters.status === 'open' ? 'selected' : '' %>>Ouvert</option>
+      <option value="in_progress" <%= filters.status === 'in_progress' ? 'selected' : '' %>>En cours</option>
+      <option value="waiting" <%= filters.status === 'waiting' ? 'selected' : '' %>>En attente</option>
+      <option value="resolved" <%= filters.status === 'resolved' ? 'selected' : '' %>>Résolu</option>
+      <option value="closed" <%= filters.status === 'closed' ? 'selected' : '' %>>Fermé</option>
+    </select>
+    <select name="priority" onchange="this.form.submit()">
+      <option value="all">Toutes les priorités</option>
+      <option value="urgent" <%= filters.priority === 'urgent' ? 'selected' : '' %>>🔴 Urgent</option>
+      <option value="high" <%= filters.priority === 'high' ? 'selected' : '' %>>🟠 Haute</option>
+      <option value="medium" <%= filters.priority === 'medium' ? 'selected' : '' %>>🟡 Moyenne</option>
+      <option value="low" <%= filters.priority === 'low' ? 'selected' : '' %>>🟢 Basse</option>
+    </select>
+    <select name="assigned" onchange="this.form.submit()">
+      <option value="all">Tous les agents</option>
+      <option value="me" <%= filters.assigned === 'me' ? 'selected' : '' %>>Mes tickets</option>
+      <option value="unassigned" <%= filters.assigned === 'unassigned' ? 'selected' : '' %>>Non assignés</option>
+    </select>
+    <div class="search-filter">
+      <input type="text" name="search" value="<%= filters.search || '' %>" placeholder="Rechercher...">
+      <button type="submit" class="btn btn-sm btn-ghost">🔍</button>
+    </div>
+  </form>
+</div>
+
+<!-- Tickets Table -->
+<div class="table-container">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Réf.</th>
+        <th>Sujet</th>
+        <th>Client</th>
+        <th>Priorité</th>
+        <th>Statut</th>
+        <th>Assigné à</th>
+        <th>Mis à jour</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% tickets.forEach(ticket => { %>
+        <tr class="ticket-row" onclick="window.location='/tickets/<%= ticket.id %>'">
+          <td><span class="ticket-ref"><%= ticket.reference %></span></td>
+          <td>
+            <div class="ticket-subject">
+              <% if (ticket.escalated_to_task) { %><span class="escalation-tag" title="Escaladé">🔺</span><% } %>
+              <%= ticket.subject %>
+            </div>
+            <div class="ticket-category"><%= ticket.category %></div>
+          </td>
+          <td><%= ticket.client_name || '—' %></td>
+          <td><span class="badge badge-priority-<%= ticket.priority %>"><%= ticket.priority %></span></td>
+          <td><span class="badge badge-status-<%= ticket.status %>"><%= ticket.status.replace('_', ' ') %></span></td>
+          <td>
+            <% if (ticket.assignee_name) { %>
+              <div class="assignee-chip">
+                <div class="avatar avatar-xs" style="background-color: <%= ticket.assignee_color %>"><%= ticket.assignee_name.charAt(0) %></div>
+                <span><%= ticket.assignee_name %></span>
+              </div>
+            <% } else { %>
+              <span class="text-muted">Non assigné</span>
+            <% } %>
+          </td>
+          <td class="text-muted"><%= new Date(ticket.updated_at).toLocaleDateString('fr-FR') %></td>
+        </tr>
+      <% }) %>
+      <% if (tickets.length === 0) { %>
+        <tr><td colspan="7" class="empty-table">Aucun ticket trouvé</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<%- include('../partials/foot') %>

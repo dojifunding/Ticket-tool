@@ -1,0 +1,20 @@
+{
+  "name": "project-hub",
+  "version": "1.0.0",
+  "description": "Outil interne de suivi de projet & ticketing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "ejs": "^3.1.10",
+    "express": "^4.21.1",
+    "express-session": "^1.18.1",
+    "memorystore": "^1.6.7",
+    "multer": "^1.4.5-lts.1",
+    "socket.io": "^4.8.1",
+    "sql.js": "^1.11.0"
+  }
+}
