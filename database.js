@@ -21,27 +21,50 @@ class DbWrapper {
     const self = this;
     return {
       get(...params) {
-        const stmt = self._db.prepare(sql);
-        if (params.length) stmt.bind(params);
-        let result = undefined;
-        if (stmt.step()) result = stmt.getAsObject();
-        stmt.free();
-        return result;
+        try {
+          const stmt = self._db.prepare(sql);
+          if (params.length) stmt.bind(params);
+          let result = undefined;
+          if (stmt.step()) result = stmt.getAsObject();
+          stmt.free();
+          return result;
+        } catch (e) {
+          console.error('[DB] get error:', e.message, 'SQL:', sql.substring(0, 80));
+          return undefined;
+        }
       },
       all(...params) {
-        const results = [];
-        const stmt = self._db.prepare(sql);
-        if (params.length) stmt.bind(params);
-        while (stmt.step()) results.push(stmt.getAsObject());
-        stmt.free();
-        return results;
+        try {
+          const results = [];
+          const stmt = self._db.prepare(sql);
+          if (params.length) stmt.bind(params);
+          while (stmt.step()) results.push(stmt.getAsObject());
+          stmt.free();
+          return results;
+        } catch (e) {
+          console.error('[DB] all error:', e.message, 'SQL:', sql.substring(0, 80));
+          return [];
+        }
       },
       run(...params) {
-        self._db.run(sql, params);
-        self._save();
-        const lastId = self._db.exec('SELECT last_insert_rowid() as id');
-        const changes = self._db.getRowsModified();
-        return { changes, lastInsertRowid: lastId[0]?.values[0]?.[0] || 0 };
+        try {
+          self._db.run(sql, params);
+          const changes = self._db.getRowsModified();
+          // Get last insert rowid safely
+          let lastId = 0;
+          try {
+            const res = self._db.exec('SELECT last_insert_rowid() as id');
+            if (res && res[0] && res[0].values && res[0].values[0]) {
+              lastId = res[0].values[0][0];
+            }
+          } catch (e2) { /* ignore */ }
+          self._save();
+          return { changes, lastInsertRowid: lastId };
+        } catch (e) {
+          console.error('[DB] run error:', e.message, 'SQL:', sql.substring(0, 80));
+          self._save();
+          return { changes: 0, lastInsertRowid: 0 };
+        }
       }
     };
   }
@@ -147,7 +170,6 @@ async function initDatabase() {
   db.exec('CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, is_read)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_activity_log_entity ON activity_log(entity_type, entity_id)');
 
-  // ─── SEED DATA ────────────────────────────────────
   const adminExists = db.prepare('SELECT id FROM users WHERE role = ?').get('admin');
   if (!adminExists) {
     const c = ['#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6','#8b5cf6'];
@@ -165,12 +187,12 @@ async function initDatabase() {
      [1,'Intégration header/footer','Développer le header responsive','in_progress','high','task',2],
      [1,'Formulaire de contact','Développer le formulaire avec validation','todo','medium','feature',3],
      [1,'Bug affichage menu mobile','Le menu burger ne se ferme pas','todo','high','bug',null],
-     [2,'Architecture React Native','Définir l\'architecture de l\'app','in_progress','critical','task',3],
-     [2,'Écran de login','Développer l\'écran de connexion','todo','high','feature',2]
+     [2,'Architecture React Native','Définir architecture de app','in_progress','critical','task',3],
+     [2,'Écran de login','Développer écran de connexion','todo','high','feature',2]
     ].forEach(t => db.prepare('INSERT INTO tasks (project_id,title,description,status,priority,type,assigned_to,created_by) VALUES (?,?,?,?,?,?,?,1)').run(...t));
 
-    [['TK-001','Impossible de se connecter','Utilisateur ne peut plus se connecter depuis ce matin.','open','high','bug','Jean Petit','jean@example.com',4],
-     ['TK-002','Question sur l\'abonnement','Client souhaite passer de Basic à Pro.','in_progress','medium','question','Marie Blanc','marie@example.com',5],
+    [['TK-001','Impossible de se connecter','Utilisateur ne peut plus se connecter.','open','high','bug','Jean Petit','jean@example.com',4],
+     ['TK-002','Question sur abonnement','Client souhaite passer de Basic à Pro.','in_progress','medium','question','Marie Blanc','marie@example.com',5],
      ['TK-003','Erreur 500 page produits','Erreur 500 signalée par plusieurs utilisateurs.','open','urgent','bug','Pierre Durand','pierre@example.com',null]
     ].forEach(t => db.prepare('INSERT INTO tickets (reference,subject,description,status,priority,category,client_name,client_email,assigned_to,created_by) VALUES (?,?,?,?,?,?,?,?,?,4)').run(...t));
 
@@ -186,12 +208,21 @@ function generateTicketRef() {
   return 'TK-' + String(parseInt(last.reference.split('-')[1]) + 1).padStart(3, '0');
 }
 
-function createNotification(userId, type, title, message, link = null) {
-  return db.prepare('INSERT INTO notifications (user_id,type,title,message,link) VALUES (?,?,?,?,?)').run(userId, type, title, message, link);
+function createNotification(userId, type, title, message, link) {
+  try {
+    return db.prepare('INSERT INTO notifications (user_id,type,title,message,link) VALUES (?,?,?,?,?)').run(userId, type, title, message, link || null);
+  } catch (e) {
+    console.error('[DB] createNotification error:', e.message);
+    return { changes: 0, lastInsertRowid: 0 };
+  }
 }
 
-function logActivity(userId, action, entityType, entityId, details = null) {
-  db.prepare('INSERT INTO activity_log (user_id,action,entity_type,entity_id,details) VALUES (?,?,?,?,?)').run(userId, action, entityType, entityId, details);
+function logActivity(userId, action, entityType, entityId, details) {
+  try {
+    db.prepare('INSERT INTO activity_log (user_id,action,entity_type,entity_id,details) VALUES (?,?,?,?,?)').run(userId, action, entityType, entityId, details || null);
+  } catch (e) {
+    console.error('[DB] logActivity error:', e.message);
+  }
 }
 
 module.exports = { getDb, initDatabase, generateTicketRef, createNotification, logActivity };

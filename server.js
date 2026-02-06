@@ -5,7 +5,7 @@ const session = require('express-session');
 const MemoryStore = require('memorystore')(session);
 const path = require('path');
 
-const { initDatabase, getDb } = require('./database');
+const { initDatabase, getDb, createNotification } = require('./database');
 const { injectUser } = require('./middleware/auth');
 
 // ─── Express App ─────────────────────────────────────
@@ -55,12 +55,23 @@ app.use((req, res) => {
   });
 });
 
+// ─── Global error handler ────────────────────────────
+app.use((err, req, res, next) => {
+  console.error('[Express Error]', err);
+  res.status(500).render('error', {
+    user: req.session?.user,
+    title: 'Erreur serveur',
+    message: 'Une erreur interne est survenue.',
+    code: 500
+  });
+});
+
 // ─── Socket.io ───────────────────────────────────────
 const onlineUsers = new Map();
 
 io.on('connection', (socket) => {
-  const session = socket.request.session;
-  const user = session?.user;
+  const sess = socket.request.session;
+  const user = sess?.user;
 
   if (!user) {
     socket.disconnect();
@@ -83,104 +94,152 @@ io.on('connection', (socket) => {
 
   // ─── Notification handling ──────────────────────
   socket.on('notifications:read', (notifId) => {
-    const db = getDb();
-    db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?').run(notifId, user.id);
+    try {
+      const db = getDb();
+      db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?').run(Number(notifId), user.id);
+    } catch (e) { console.error('[Socket] notifications:read error:', e.message); }
   });
 
   socket.on('notifications:readAll', () => {
-    const db = getDb();
-    db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(user.id);
+    try {
+      const db = getDb();
+      db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(user.id);
+    } catch (e) { console.error('[Socket] notifications:readAll error:', e.message); }
   });
 
   // ─── Task real-time updates ─────────────────────
   socket.on('task:move', (data) => {
-    const db = getDb();
-    const { taskId, status: newStatus } = data;
-    db.prepare('UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newStatus, taskId);
-    const task = db.prepare('SELECT t.*, u.full_name as assignee_name FROM tasks t LEFT JOIN users u ON t.assigned_to = u.id WHERE t.id = ?').get(taskId);
-    io.to('role-developer').emit('task:updated', task);
+    try {
+      const db = getDb();
+      const taskId = Number(data.taskId);
+      const newStatus = String(data.status);
 
-    // Notify assigned user
-    if (task.assigned_to && task.assigned_to !== user.id) {
-      const { createNotification } = require('./database');
-      createNotification(
-        task.assigned_to,
-        'task_update',
-        'Tâche déplacée',
-        `${user.full_name} a déplacé "${task.title}" vers ${newStatus}`,
-        `/projects/${task.project_id}/board`
-      );
-      io.to(`user-${task.assigned_to}`).emit('notification:new');
+      db.prepare('UPDATE tasks SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newStatus, taskId);
+
+      const task = db.prepare(`
+        SELECT t.*, u.full_name as assignee_name 
+        FROM tasks t LEFT JOIN users u ON t.assigned_to = u.id 
+        WHERE t.id = ?
+      `).get(taskId);
+
+      if (task) {
+        io.to('role-developer').emit('task:updated', task);
+
+        if (task.assigned_to && task.assigned_to !== user.id) {
+          createNotification(
+            task.assigned_to, 'task_update', 'Tâche déplacée',
+            user.full_name + ' a déplacé "' + task.title + '" vers ' + newStatus,
+            '/projects/' + task.project_id + '/board'
+          );
+          io.to('user-' + task.assigned_to).emit('notification:new');
+        }
+
+        // ─── ESCALATION FEEDBACK ───
+        if (task.escalated_from_ticket) {
+          try {
+            const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(task.escalated_from_ticket);
+            if (ticket) {
+              const isDone = (newStatus === 'done');
+              const statusLabels = { backlog: 'Backlog', todo: 'À faire', in_progress: 'En cours', review: 'En revue', done: '✅ Terminé' };
+              const statusLabel = statusLabels[newStatus] || newStatus;
+
+              const feedbackMsg = isDone
+                ? '✅ L\'équipe développement a résolu le problème. La tâche "' + task.title + '" est terminée.'
+                : '🔄 La tâche escaladée "' + task.title + '" est passée à : ' + statusLabel;
+
+              db.prepare('INSERT INTO ticket_messages (ticket_id, user_id, content, is_internal) VALUES (?, ?, ?, 1)').run(ticket.id, user.id, feedbackMsg);
+              db.prepare('UPDATE tickets SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(ticket.id);
+
+              const targets = new Set();
+              if (ticket.created_by) targets.add(ticket.created_by);
+              if (ticket.assigned_to) targets.add(ticket.assigned_to);
+              targets.forEach(tid => {
+                createNotification(tid, 'escalation', isDone ? 'Escalade résolue' : 'Escalade mise à jour',
+                  (isDone ? 'Tâche terminée' : 'Statut : ' + statusLabel) + ' — ' + ticket.reference, '/tickets/' + ticket.id);
+                io.to('user-' + tid).emit('notification:new');
+              });
+
+              io.to('role-support').emit('ticket:updated', { ticketId: ticket.id });
+              io.to('role-support').emit('ticket:newMessage', {
+                ticketId: ticket.id,
+                message: { full_name: user.full_name, avatar_color: '#6366f1', role: 'developer', content: feedbackMsg, is_internal: 1 }
+              });
+            }
+          } catch (esc) { console.error('[Socket] escalation feedback error:', esc.message); }
+        }
+      }
+    } catch (e) {
+      console.error('[Socket] task:move error:', e.message);
     }
   });
 
   // ─── Chat messages in tickets ───────────────────
   socket.on('ticket:message', (data) => {
-    const db = getDb();
-    const { ticketId, content, isInternal } = data;
+    try {
+      const db = getDb();
+      const ticketId = Number(data.ticketId);
+      const content = String(data.content);
+      const isInternal = data.isInternal ? 1 : 0;
 
-    db.prepare(`
-      INSERT INTO ticket_messages (ticket_id, user_id, content, is_internal)
-      VALUES (?, ?, ?, ?)
-    `).run(ticketId, user.id, content, isInternal ? 1 : 0);
+      db.prepare('INSERT INTO ticket_messages (ticket_id, user_id, content, is_internal) VALUES (?, ?, ?, ?)').run(ticketId, user.id, content, isInternal);
+      db.prepare('UPDATE tickets SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(ticketId);
 
-    db.prepare('UPDATE tickets SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(ticketId);
+      // Get the message we just inserted
+      const message = db.prepare(`
+        SELECT tm.*, u.full_name, u.avatar_color, u.role as user_role
+        FROM ticket_messages tm
+        JOIN users u ON tm.user_id = u.id
+        WHERE tm.ticket_id = ? AND tm.user_id = ?
+        ORDER BY tm.id DESC LIMIT 1
+      `).get(ticketId, user.id);
 
-    const message = db.prepare(`
-      SELECT tm.*, u.full_name, u.avatar_color, u.role as user_role
-      FROM ticket_messages tm
-      JOIN users u ON tm.user_id = u.id
-      WHERE tm.id = last_insert_rowid()
-    `).get();
+      io.to('role-support').emit('ticket:newMessage', { ticketId, message });
 
-    // Emit to all support + admin
-    io.to('role-support').emit('ticket:newMessage', { ticketId, message });
-
-    // Notify assigned agent
-    const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
-    if (ticket.assigned_to && ticket.assigned_to !== user.id) {
-      const { createNotification } = require('./database');
-      createNotification(
-        ticket.assigned_to,
-        'ticket_message',
-        'Nouveau message',
-        `${user.full_name} a ajouté un message sur ${ticket.reference}`,
-        `/tickets/${ticketId}`
-      );
-      io.to(`user-${ticket.assigned_to}`).emit('notification:new');
+      const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
+      if (ticket && ticket.assigned_to && ticket.assigned_to !== user.id) {
+        createNotification(
+          ticket.assigned_to, 'ticket_message', 'Nouveau message',
+          user.full_name + ' a ajouté un message sur ' + ticket.reference,
+          '/tickets/' + ticketId
+        );
+        io.to('user-' + ticket.assigned_to).emit('notification:new');
+      }
+    } catch (e) {
+      console.error('[Socket] ticket:message error:', e.message);
     }
   });
 
   // ─── Task comments ─────────────────────────────
   socket.on('task:comment', (data) => {
-    const db = getDb();
-    const { taskId, content } = data;
+    try {
+      const db = getDb();
+      const taskId = Number(data.taskId);
+      const content = String(data.content);
 
-    db.prepare(`
-      INSERT INTO task_comments (task_id, user_id, content)
-      VALUES (?, ?, ?)
-    `).run(taskId, user.id, content);
+      db.prepare('INSERT INTO task_comments (task_id, user_id, content) VALUES (?, ?, ?)').run(taskId, user.id, content);
 
-    const comment = db.prepare(`
-      SELECT tc.*, u.full_name, u.avatar_color
-      FROM task_comments tc
-      JOIN users u ON tc.user_id = u.id
-      WHERE tc.id = last_insert_rowid()
-    `).get();
+      // Get the comment we just inserted
+      const comment = db.prepare(`
+        SELECT tc.*, u.full_name, u.avatar_color
+        FROM task_comments tc
+        JOIN users u ON tc.user_id = u.id
+        WHERE tc.task_id = ? AND tc.user_id = ?
+        ORDER BY tc.id DESC LIMIT 1
+      `).get(taskId, user.id);
 
-    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
-    io.to('role-developer').emit('task:newComment', { taskId, comment });
+      const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+      io.to('role-developer').emit('task:newComment', { taskId, comment });
 
-    if (task.assigned_to && task.assigned_to !== user.id) {
-      const { createNotification } = require('./database');
-      createNotification(
-        task.assigned_to,
-        'task_comment',
-        'Nouveau commentaire',
-        `${user.full_name} a commenté "${task.title}"`,
-        `/projects/${task.project_id}/tasks/${taskId}`
-      );
-      io.to(`user-${task.assigned_to}`).emit('notification:new');
+      if (task && task.assigned_to && task.assigned_to !== user.id) {
+        createNotification(
+          task.assigned_to, 'task_comment', 'Nouveau commentaire',
+          user.full_name + ' a commenté "' + task.title + '"',
+          '/projects/' + task.project_id + '/tasks/' + taskId
+        );
+        io.to('user-' + task.assigned_to).emit('notification:new');
+      }
+    } catch (e) {
+      console.error('[Socket] task:comment error:', e.message);
     }
   });
 
@@ -189,6 +248,14 @@ io.on('connection', (socket) => {
     onlineUsers.delete(user.id);
     io.emit('users:online', Array.from(onlineUsers.values()).map(u => u.user));
   });
+});
+
+// ─── Catch uncaught errors to prevent crashes ────────
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT]', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('[UNHANDLED REJECTION]', err);
 });
 
 // ─── Start Server ────────────────────────────────────
@@ -200,15 +267,7 @@ const PORT = process.env.PORT || 3000;
     console.log(`
   ╔══════════════════════════════════════════╗
   ║         🚀 ProjectHub démarré           ║
-  ║                                          ║
   ║   URL : http://localhost:${PORT}            ║
-  ║                                          ║
-  ║   Comptes de démo :                      ║
-  ║   👑 admin    / admin123   (Admin)       ║
-  ║   👨‍💻 dev1     / dev123     (Développeur) ║
-  ║   👨‍💻 dev2     / dev123     (Développeur) ║
-  ║   🎧 support1 / support123 (Support)    ║
-  ║   🎧 support2 / support123 (Support)    ║
   ╚══════════════════════════════════════════╝
     `);
   });

@@ -176,6 +176,46 @@ router.post('/:projectId/tasks/:taskId/update', (req, res) => {
     req.app.get('io').to(`user-${assigned_to}`).emit('notification:new');
   }
 
+  // ─── ESCALATION FEEDBACK: notify support when escalated task changes status ───
+  if (task.escalated_from_ticket && oldTask.status !== status) {
+    const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(task.escalated_from_ticket);
+    if (ticket) {
+      const statusLabels = { backlog: 'Backlog', todo: 'À faire', in_progress: 'En cours', review: 'En revue', done: '✅ Terminé' };
+      const statusLabel = statusLabels[status] || status;
+      const isDone = (status === 'done');
+
+      // Add automatic message to ticket conversation
+      const feedbackMsg = isDone
+        ? '✅ L\'équipe développement a résolu le problème lié à ce ticket. La tâche "' + task.title + '" est terminée.'
+        : '🔄 La tâche escaladée "' + task.title + '" est passée au statut : ' + statusLabel;
+
+      db.prepare('INSERT INTO ticket_messages (ticket_id, user_id, content, is_internal) VALUES (?, ?, ?, 1)').run(ticket.id, user.id, feedbackMsg);
+      db.prepare('UPDATE tickets SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(ticket.id);
+
+      // Notify support agents (ticket creator + assigned agent)
+      const notifTargets = new Set();
+      if (ticket.created_by) notifTargets.add(ticket.created_by);
+      if (ticket.assigned_to) notifTargets.add(ticket.assigned_to);
+
+      const notifTitle = isDone ? 'Escalade résolue' : 'Escalade mise à jour';
+      const notifMessage = isDone
+        ? 'La tâche "' + task.title + '" liée au ticket ' + ticket.reference + ' est terminée.'
+        : 'La tâche "' + task.title + '" liée au ticket ' + ticket.reference + ' est passée à : ' + statusLabel;
+
+      notifTargets.forEach(targetId => {
+        createNotification(targetId, 'escalation', notifTitle, notifMessage, '/tickets/' + ticket.id);
+        req.app.get('io').to('user-' + targetId).emit('notification:new');
+      });
+
+      // Broadcast to support room
+      req.app.get('io').to('role-support').emit('ticket:updated', { ticketId: ticket.id });
+      req.app.get('io').to('role-support').emit('ticket:newMessage', {
+        ticketId: ticket.id,
+        message: { full_name: user.full_name, avatar_color: '#6366f1', role: 'developer', content: feedbackMsg, is_internal: 1 }
+      });
+    }
+  }
+
   res.redirect(`/projects/${req.params.projectId}/tasks/${req.params.taskId}`);
 });
 
