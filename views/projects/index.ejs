@@ -2,12 +2,12 @@
 
 <div class="page-header">
   <div>
-    <h1 class="page-title">Projets</h1>
-    <p class="page-subtitle"><%= projects.length %> projet<%= projects.length > 1 ? 's' : '' %></p>
+    <h1 class="page-title"><%= t.projects_title %></h1>
+    <p class="page-subtitle"><%= projects.length %> <%= t.projects_count_suffix %></p>
   </div>
   <a href="/projects/new" class="btn btn-primary">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-    Nouveau projet
+    <%= t.projects_new %>
   </a>
 </div>
 
@@ -22,19 +22,17 @@
         </div>
       </div>
       <h3 class="project-name"><%= project.name %></h3>
-      <p class="project-desc"><%= project.description || 'Aucune description' %></p>
+      <p class="project-desc"><%= project.description || t.no_description %></p>
       <div class="project-progress">
         <div class="progress-bar">
           <div class="progress-fill" style="width: <%= project.task_count > 0 ? Math.round((project.done_count / project.task_count) * 100) : 0 %>%"></div>
         </div>
-        <span class="progress-text"><%= project.done_count %>/<%= project.task_count %> tâches</span>
+        <span class="progress-text"><%= project.done_count %>/<%= project.task_count %> <%= t.projects_tasks_count %></span>
       </div>
       <div class="project-card-footer">
         <span class="priority-dot priority-<%= project.priority %>"></span>
         <span><%= project.priority %></span>
-        <a href="/projects/<%= project.id %>/board" class="btn btn-sm btn-ghost">
-          Voir le board →
-        </a>
+        <a href="/projects/<%= project.id %>/board" class="btn btn-sm btn-ghost"><%= t.projects_view_board %></a>
       </div>
     </div>
   <% }) %>
@@ -42,9 +40,9 @@
   <% if (projects.length === 0) { %>
     <div class="empty-state">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-      <h3>Aucun projet</h3>
-      <p>Créez votre premier projet pour commencer</p>
-      <a href="/projects/new" class="btn btn-primary">Créer un projet</a>
+      <h3><%= t.projects_empty_title %></h3>
+      <p><%= t.projects_empty_text %></p>
+      <a href="/projects/new" class="btn btn-primary"><%= t.projects_new %></a>
     </div>
   <% } %>
 </div>

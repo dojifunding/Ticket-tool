@@ -2,7 +2,7 @@
 
 <div class="page-header">
   <div>
-    <a href="/tickets" class="back-link">← Tickets</a>
+    <a href="/tickets" class="back-link"><%= t.ticket_back %></a>
     <div class="ticket-detail-title">
       <span class="ticket-ref-lg"><%= ticket.reference %></span>
       <h1 class="page-title"><%= ticket.subject %></h1>
@@ -11,37 +11,29 @@
 </div>
 
 <div class="detail-layout">
-  <!-- Main Content -->
   <div class="detail-main">
-    <!-- Escalation banner -->
     <% if (escalatedTask) { %>
       <div class="escalation-banner escalation-active">
-        🔺 Escaladé vers l'équipe développement
+        🔺 <%= t.ticket_escalated_to_dev %>
         <% if (user.role === 'admin') { %>
-          — <a href="/projects/<%= escalatedTask.project_id %>/tasks/<%= escalatedTask.id %>">Voir la tâche dans "<%= escalatedTask.project_name %>"</a>
+          — <a href="/projects/<%= escalatedTask.project_id %>/tasks/<%= escalatedTask.id %>"><%= t.ticket_see_task %> "<%= escalatedTask.project_name %>"</a>
         <% } else { %>
-          — Projet: <%= escalatedTask.project_name %> (statut: <%= escalatedTask.status %>)
+          — <%= t.ticket_project_status %> <%= escalatedTask.project_name %> (<%= t.ticket_status_label %> <%= escalatedTask.status %>)
         <% } %>
       </div>
     <% } %>
 
-    <!-- Ticket Description -->
     <div class="detail-section">
-      <h3>Description du problème</h3>
+      <h3><%= t.ticket_description_title %></h3>
       <div class="detail-description ticket-description"><%= ticket.description %></div>
       <div class="ticket-client-info">
-        <% if (ticket.client_name) { %>
-          <span>👤 <%= ticket.client_name %></span>
-        <% } %>
-        <% if (ticket.client_email) { %>
-          <span>✉️ <%= ticket.client_email %></span>
-        <% } %>
+        <% if (ticket.client_name) { %><span>👤 <%= ticket.client_name %></span><% } %>
+        <% if (ticket.client_email) { %><span>✉️ <%= ticket.client_email %></span><% } %>
       </div>
     </div>
 
-    <!-- Messages / Conversation -->
     <div class="detail-section">
-      <h3>Conversation (<%= messages.length %>)</h3>
+      <h3><%= t.ticket_conversation %> (<%= messages.length %>)</h3>
       <div class="messages-list" id="messagesList">
         <% messages.forEach(msg => { %>
           <div class="message <%= msg.is_internal ? 'message-internal' : '' %>">
@@ -50,30 +42,29 @@
               <div class="message-header">
                 <strong><%= msg.full_name %></strong>
                 <span class="message-role"><%= msg.user_role %></span>
-                <% if (msg.is_internal) { %><span class="internal-badge">Note interne</span><% } %>
-                <time><%= new Date(msg.created_at).toLocaleString('fr-FR') %></time>
+                <% if (msg.is_internal) { %><span class="internal-badge"><%= t.ticket_internal_badge %></span><% } %>
+                <time><%= new Date(msg.created_at).toLocaleString(dateLocale) %></time>
               </div>
               <div class="message-content"><%= msg.content %></div>
             </div>
           </div>
         <% }) %>
         <% if (messages.length === 0) { %>
-          <p class="text-muted">Aucun message. Ajoutez le premier message ci-dessous.</p>
+          <p class="text-muted"><%= t.ticket_no_messages %></p>
         <% } %>
       </div>
 
-      <!-- Message Input -->
       <div class="message-form">
         <div class="avatar avatar-sm" style="background-color: <%= user.avatar_color %>"><%= user.full_name.charAt(0) %></div>
         <div class="message-input-wrapper">
-          <textarea id="messageInput" placeholder="Écrire un message..." rows="3"></textarea>
+          <textarea id="messageInput" placeholder="<%= t.ticket_message_placeholder %>" rows="3"></textarea>
           <div class="message-actions">
             <label class="internal-toggle">
               <input type="checkbox" id="isInternal">
-              <span>Note interne (invisible pour le client)</span>
+              <span><%= t.ticket_internal_note %></span>
             </label>
             <button class="btn btn-primary btn-sm" onclick="sendMessage()">
-              Envoyer
+              <%= t.send %>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
           </div>
@@ -82,99 +73,97 @@
     </div>
   </div>
 
-  <!-- Sidebar -->
   <div class="detail-sidebar">
     <form method="POST" action="/tickets/<%= ticket.id %>/update" class="sidebar-form">
       <div class="sidebar-field">
-        <label>Statut</label>
+        <label><%= t.label_status %></label>
         <select name="status" class="status-select">
-          <option value="open" <%= ticket.status === 'open' ? 'selected' : '' %>>🟢 Ouvert</option>
-          <option value="in_progress" <%= ticket.status === 'in_progress' ? 'selected' : '' %>>🔵 En cours</option>
-          <option value="waiting" <%= ticket.status === 'waiting' ? 'selected' : '' %>>🟡 En attente</option>
-          <option value="resolved" <%= ticket.status === 'resolved' ? 'selected' : '' %>>✅ Résolu</option>
-          <option value="closed" <%= ticket.status === 'closed' ? 'selected' : '' %>>⬛ Fermé</option>
+          <option value="open" <%= ticket.status === 'open' ? 'selected' : '' %>>🟢 <%= t.tstatus_open %></option>
+          <option value="in_progress" <%= ticket.status === 'in_progress' ? 'selected' : '' %>>🔵 <%= t.tstatus_in_progress %></option>
+          <option value="waiting" <%= ticket.status === 'waiting' ? 'selected' : '' %>>🟡 <%= t.tstatus_waiting %></option>
+          <option value="resolved" <%= ticket.status === 'resolved' ? 'selected' : '' %>>✅ <%= t.tstatus_resolved %></option>
+          <option value="closed" <%= ticket.status === 'closed' ? 'selected' : '' %>>⬛ <%= t.tstatus_closed %></option>
         </select>
       </div>
       <div class="sidebar-field">
-        <label>Priorité</label>
+        <label><%= t.label_priority %></label>
         <select name="priority">
-          <option value="low" <%= ticket.priority === 'low' ? 'selected' : '' %>>🟢 Basse</option>
-          <option value="medium" <%= ticket.priority === 'medium' ? 'selected' : '' %>>🟡 Moyenne</option>
-          <option value="high" <%= ticket.priority === 'high' ? 'selected' : '' %>>🟠 Haute</option>
-          <option value="urgent" <%= ticket.priority === 'urgent' ? 'selected' : '' %>>🔴 Urgent</option>
+          <option value="low" <%= ticket.priority === 'low' ? 'selected' : '' %>><%= t.priority_low %></option>
+          <option value="medium" <%= ticket.priority === 'medium' ? 'selected' : '' %>><%= t.priority_medium %></option>
+          <option value="high" <%= ticket.priority === 'high' ? 'selected' : '' %>><%= t.priority_high %></option>
+          <option value="urgent" <%= ticket.priority === 'urgent' ? 'selected' : '' %>><%= t.priority_urgent %></option>
         </select>
       </div>
       <div class="sidebar-field">
-        <label>Catégorie</label>
+        <label><%= t.label_category %></label>
         <select name="category">
-          <option value="general" <%= ticket.category === 'general' ? 'selected' : '' %>>Général</option>
-          <option value="bug" <%= ticket.category === 'bug' ? 'selected' : '' %>>Bug</option>
-          <option value="question" <%= ticket.category === 'question' ? 'selected' : '' %>>Question</option>
-          <option value="feature_request" <%= ticket.category === 'feature_request' ? 'selected' : '' %>>Demande</option>
-          <option value="account" <%= ticket.category === 'account' ? 'selected' : '' %>>Compte</option>
-          <option value="billing" <%= ticket.category === 'billing' ? 'selected' : '' %>>Facturation</option>
-          <option value="other" <%= ticket.category === 'other' ? 'selected' : '' %>>Autre</option>
+          <option value="general" <%= ticket.category === 'general' ? 'selected' : '' %>><%= t.cat_general %></option>
+          <option value="bug" <%= ticket.category === 'bug' ? 'selected' : '' %>><%= t.cat_bug %></option>
+          <option value="question" <%= ticket.category === 'question' ? 'selected' : '' %>><%= t.cat_question %></option>
+          <option value="feature_request" <%= ticket.category === 'feature_request' ? 'selected' : '' %>><%= t.cat_feature_request %></option>
+          <option value="account" <%= ticket.category === 'account' ? 'selected' : '' %>><%= t.cat_account %></option>
+          <option value="billing" <%= ticket.category === 'billing' ? 'selected' : '' %>><%= t.cat_billing %></option>
+          <option value="other" <%= ticket.category === 'other' ? 'selected' : '' %>><%= t.cat_other %></option>
         </select>
       </div>
       <div class="sidebar-field">
-        <label>Assigné à</label>
+        <label><%= t.label_assigned_to %></label>
         <select name="assigned_to">
-          <option value="">Non assigné</option>
+          <option value=""><%= t.not_assigned %></option>
           <% agents.forEach(a => { %>
             <option value="<%= a.id %>" <%= ticket.assigned_to === a.id ? 'selected' : '' %>><%= a.full_name %></option>
           <% }) %>
         </select>
       </div>
-      <button type="submit" class="btn btn-primary btn-full">Mettre à jour</button>
+      <button type="submit" class="btn btn-primary btn-full"><%= t.update %></button>
     </form>
 
     <div class="sidebar-meta">
       <div class="meta-item">
-        <span class="meta-label">Créé par</span>
+        <span class="meta-label"><%= t.label_created_by %></span>
         <span><%= ticket.creator_name %></span>
       </div>
       <div class="meta-item">
-        <span class="meta-label">Créé le</span>
-        <span><%= new Date(ticket.created_at).toLocaleString('fr-FR') %></span>
+        <span class="meta-label"><%= t.label_created_at %></span>
+        <span><%= new Date(ticket.created_at).toLocaleString(dateLocale) %></span>
       </div>
       <% if (ticket.resolved_at) { %>
         <div class="meta-item">
-          <span class="meta-label">Résolu le</span>
-          <span><%= new Date(ticket.resolved_at).toLocaleString('fr-FR') %></span>
+          <span class="meta-label"><%= t.label_resolved_at %></span>
+          <span><%= new Date(ticket.resolved_at).toLocaleString(dateLocale) %></span>
         </div>
       <% } %>
     </div>
 
-    <!-- Escalation -->
     <% if (!escalatedTask) { %>
       <div class="escalation-section">
-        <h4>🔺 Escalader aux développeurs</h4>
-        <p class="text-muted text-sm">Signaler ce problème à l'équipe technique</p>
+        <h4><%= t.ticket_escalate_title %></h4>
+        <p class="text-muted text-sm"><%= t.ticket_escalate_subtitle %></p>
         <form method="POST" action="/tickets/<%= ticket.id %>/escalate" class="escalation-form">
           <div class="form-group">
-            <label>Projet cible *</label>
+            <label><%= t.ticket_escalate_project %></label>
             <select name="project_id" required>
-              <option value="">Choisir un projet</option>
+              <option value=""><%= t.ticket_escalate_project_placeholder %></option>
               <% projects.forEach(p => { %>
                 <option value="<%= p.id %>"><%= p.code %> — <%= p.name %></option>
               <% }) %>
             </select>
           </div>
           <div class="form-group">
-            <label>Titre de la tâche</label>
-            <input type="text" name="title" value="[Escalade] <%= ticket.subject %>" placeholder="Titre...">
+            <label><%= t.ticket_escalate_task_title %></label>
+            <input type="text" name="title" value="[Escalade] <%= ticket.subject %>" placeholder="Title...">
           </div>
           <div class="form-group">
-            <label>Priorité</label>
+            <label><%= t.label_priority %></label>
             <select name="priority">
-              <option value="medium">Moyenne</option>
-              <option value="high" <%= ticket.priority === 'high' || ticket.priority === 'urgent' ? 'selected' : '' %>>Haute</option>
-              <option value="critical" <%= ticket.priority === 'urgent' ? 'selected' : '' %>>Critique</option>
+              <option value="medium"><%= t.priority_label_medium %></option>
+              <option value="high" <%= ticket.priority === 'high' || ticket.priority === 'urgent' ? 'selected' : '' %>><%= t.priority_label_high %></option>
+              <option value="critical" <%= ticket.priority === 'urgent' ? 'selected' : '' %>><%= t.priority_label_critical %></option>
             </select>
           </div>
           <button type="submit" class="btn btn-warning btn-full"
-                  onclick="return confirm('Escalader ce ticket à l\'équipe de développement ?')">
-            🔺 Escalader
+                  onclick="return confirm('<%= t.ticket_escalate_confirm %>')">
+            <%= t.ticket_escalate_btn %>
           </button>
         </form>
       </div>
@@ -193,7 +182,6 @@ function sendMessage() {
   socket.emit('ticket:message', { ticketId, content, isInternal });
   input.value = '';
 }
-// Real-time messages
 if (typeof io !== 'undefined') {
   const socket = io();
   socket.on('ticket:newMessage', (data) => {
@@ -204,27 +192,13 @@ if (typeof io !== 'undefined') {
       if (emptyMsg) emptyMsg.remove();
       const div = document.createElement('div');
       div.className = 'message message-new' + (m.is_internal ? ' message-internal' : '');
-      div.innerHTML = `
-        <div class="avatar avatar-sm" style="background-color: ${m.avatar_color}">${m.full_name.charAt(0)}</div>
-        <div class="message-body">
-          <div class="message-header">
-            <strong>${m.full_name}</strong>
-            <span class="message-role">${m.user_role}</span>
-            ${m.is_internal ? '<span class="internal-badge">Note interne</span>' : ''}
-            <time>À l'instant</time>
-          </div>
-          <div class="message-content">${m.content}</div>
-        </div>
-      `;
+      div.innerHTML = '<div class="avatar avatar-sm" style="background-color: ' + m.avatar_color + '">' + m.full_name.charAt(0) + '</div><div class="message-body"><div class="message-header"><strong>' + m.full_name + '</strong><span class="message-role">' + (m.user_role || m.role || '') + '</span>' + (m.is_internal ? '<span class="internal-badge"><%= t.ticket_internal_badge %></span>' : '') + '<time><%= t.just_now %></time></div><div class="message-content">' + m.content + '</div></div>';
       list.appendChild(div);
       div.scrollIntoView({ behavior: 'smooth' });
     }
   });
 }
-// Ctrl+Enter to send
-document.getElementById('messageInput').addEventListener('keydown', (e) => {
-  if (e.ctrlKey && e.key === 'Enter') sendMessage();
-});
+document.getElementById('messageInput').addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'Enter') sendMessage(); });
 </script>
 
 <%- include('../partials/foot') %>

@@ -4,16 +4,16 @@
     <div class="error-code"><%= code %></div>
     <h1><%= title %></h1>
     <p><%= message %></p>
-    <a href="/" class="btn btn-primary">Retour à l'accueil</a>
+    <a href="/" class="btn btn-primary"><%= t.error_back_home %></a>
   </div>
   <%- include('partials/foot') %>
 <% } else { %>
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="<%= typeof t !== 'undefined' ? t.lang : 'fr' %>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Erreur — ProjectHub</title>
+  <title><%= typeof t !== 'undefined' ? t.error_title : 'Erreur' %> — ProjectHub</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -22,7 +22,7 @@
     <div class="error-code"><%= code %></div>
     <h1><%= title %></h1>
     <p><%= message %></p>
-    <a href="/login" class="btn btn-primary">Connexion</a>
+    <a href="/login" class="btn btn-primary"><%= typeof t !== 'undefined' ? t.error_back_login : 'Connexion' %></a>
   </div>
 </body>
 </html>

@@ -2,12 +2,12 @@
 
 <div class="page-header">
   <div>
-    <h1 class="page-title">Tickets Support</h1>
-    <p class="page-subtitle"><%= stats.total %> ticket<%= stats.total > 1 ? 's' : '' %> au total</p>
+    <h1 class="page-title"><%= t.tickets_title %></h1>
+    <p class="page-subtitle"><%= stats.total %> <%= t.tickets_count_suffix %></p>
   </div>
   <a href="/tickets/new" class="btn btn-primary">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-    Nouveau ticket
+    <%= t.tickets_new %>
   </a>
 </div>
 
@@ -15,19 +15,19 @@
 <div class="stats-row">
   <div class="stat-card stat-open">
     <div class="stat-value"><%= stats.open %></div>
-    <div class="stat-label">Ouverts</div>
+    <div class="stat-label"><%= t.tickets_stat_open %></div>
   </div>
   <div class="stat-card stat-progress">
     <div class="stat-value"><%= stats.in_progress %></div>
-    <div class="stat-label">En cours</div>
+    <div class="stat-label"><%= t.tickets_stat_progress %></div>
   </div>
   <div class="stat-card stat-waiting">
     <div class="stat-value"><%= stats.waiting %></div>
-    <div class="stat-label">En attente</div>
+    <div class="stat-label"><%= t.tickets_stat_waiting %></div>
   </div>
   <div class="stat-card stat-resolved">
     <div class="stat-value"><%= stats.resolved %></div>
-    <div class="stat-label">Résolus</div>
+    <div class="stat-label"><%= t.tickets_stat_resolved %></div>
   </div>
 </div>
 
@@ -35,27 +35,27 @@
 <div class="filters-bar">
   <form method="GET" action="/tickets" class="filters-form">
     <select name="status" onchange="this.form.submit()">
-      <option value="all">Tous les statuts</option>
-      <option value="open" <%= filters.status === 'open' ? 'selected' : '' %>>Ouvert</option>
-      <option value="in_progress" <%= filters.status === 'in_progress' ? 'selected' : '' %>>En cours</option>
-      <option value="waiting" <%= filters.status === 'waiting' ? 'selected' : '' %>>En attente</option>
-      <option value="resolved" <%= filters.status === 'resolved' ? 'selected' : '' %>>Résolu</option>
-      <option value="closed" <%= filters.status === 'closed' ? 'selected' : '' %>>Fermé</option>
+      <option value="all"><%= t.tickets_filter_all_status %></option>
+      <option value="open" <%= filters.status === 'open' ? 'selected' : '' %>><%= t.tstatus_open %></option>
+      <option value="in_progress" <%= filters.status === 'in_progress' ? 'selected' : '' %>><%= t.tstatus_in_progress %></option>
+      <option value="waiting" <%= filters.status === 'waiting' ? 'selected' : '' %>><%= t.tstatus_waiting %></option>
+      <option value="resolved" <%= filters.status === 'resolved' ? 'selected' : '' %>><%= t.tstatus_resolved %></option>
+      <option value="closed" <%= filters.status === 'closed' ? 'selected' : '' %>><%= t.tstatus_closed %></option>
     </select>
     <select name="priority" onchange="this.form.submit()">
-      <option value="all">Toutes les priorités</option>
-      <option value="urgent" <%= filters.priority === 'urgent' ? 'selected' : '' %>>🔴 Urgent</option>
-      <option value="high" <%= filters.priority === 'high' ? 'selected' : '' %>>🟠 Haute</option>
-      <option value="medium" <%= filters.priority === 'medium' ? 'selected' : '' %>>🟡 Moyenne</option>
-      <option value="low" <%= filters.priority === 'low' ? 'selected' : '' %>>🟢 Basse</option>
+      <option value="all"><%= t.tickets_filter_all_priority %></option>
+      <option value="urgent" <%= filters.priority === 'urgent' ? 'selected' : '' %>><%= t.priority_urgent %></option>
+      <option value="high" <%= filters.priority === 'high' ? 'selected' : '' %>><%= t.priority_high %></option>
+      <option value="medium" <%= filters.priority === 'medium' ? 'selected' : '' %>><%= t.priority_medium %></option>
+      <option value="low" <%= filters.priority === 'low' ? 'selected' : '' %>><%= t.priority_low %></option>
     </select>
     <select name="assigned" onchange="this.form.submit()">
-      <option value="all">Tous les agents</option>
-      <option value="me" <%= filters.assigned === 'me' ? 'selected' : '' %>>Mes tickets</option>
-      <option value="unassigned" <%= filters.assigned === 'unassigned' ? 'selected' : '' %>>Non assignés</option>
+      <option value="all"><%= t.tickets_filter_all_agents %></option>
+      <option value="me" <%= filters.assigned === 'me' ? 'selected' : '' %>><%= t.tickets_filter_my %></option>
+      <option value="unassigned" <%= filters.assigned === 'unassigned' ? 'selected' : '' %>><%= t.tickets_filter_unassigned %></option>
     </select>
     <div class="search-filter">
-      <input type="text" name="search" value="<%= filters.search || '' %>" placeholder="Rechercher...">
+      <input type="text" name="search" value="<%= filters.search || '' %>" placeholder="<%= t.tickets_filter_search %>">
       <button type="submit" class="btn btn-sm btn-ghost">🔍</button>
     </div>
   </form>
@@ -66,13 +66,13 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th>Réf.</th>
-        <th>Sujet</th>
-        <th>Client</th>
-        <th>Priorité</th>
-        <th>Statut</th>
-        <th>Assigné à</th>
-        <th>Mis à jour</th>
+        <th><%= t.tickets_col_ref %></th>
+        <th><%= t.tickets_col_subject %></th>
+        <th><%= t.tickets_col_client %></th>
+        <th><%= t.tickets_col_priority %></th>
+        <th><%= t.tickets_col_status %></th>
+        <th><%= t.tickets_col_assigned %></th>
+        <th><%= t.tickets_col_updated %></th>
       </tr>
     </thead>
     <tbody>
@@ -81,7 +81,7 @@
           <td><span class="ticket-ref"><%= ticket.reference %></span></td>
           <td>
             <div class="ticket-subject">
-              <% if (ticket.escalated_to_task) { %><span class="escalation-tag" title="Escaladé">🔺</span><% } %>
+              <% if (ticket.escalated_to_task) { %><span class="escalation-tag" title="Escalated">🔺</span><% } %>
               <%= ticket.subject %>
             </div>
             <div class="ticket-category"><%= ticket.category %></div>
@@ -96,14 +96,14 @@
                 <span><%= ticket.assignee_name %></span>
               </div>
             <% } else { %>
-              <span class="text-muted">Non assigné</span>
+              <span class="text-muted"><%= t.not_assigned %></span>
             <% } %>
           </td>
-          <td class="text-muted"><%= new Date(ticket.updated_at).toLocaleDateString('fr-FR') %></td>
+          <td class="text-muted"><%= new Date(ticket.updated_at).toLocaleDateString(dateLocale) %></td>
         </tr>
       <% }) %>
       <% if (tickets.length === 0) { %>
-        <tr><td colspan="7" class="empty-table">Aucun ticket trouvé</td></tr>
+        <tr><td colspan="7" class="empty-table"><%= t.tickets_empty %></td></tr>
       <% } %>
     </tbody>
   </table>

@@ -2,22 +2,32 @@ const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const { getDb } = require('../database');
 const { isAuthenticated } = require('../middleware/auth');
+const { getTranslations } = require('../i18n');
+
+// ─── Language Switch ────────────────────────────────
+router.get('/lang/:code', (req, res) => {
+  const lang = ['fr', 'en'].includes(req.params.code) ? req.params.code : 'fr';
+  req.session.lang = lang;
+  res.redirect(req.headers.referer || '/');
+});
 
 // ─── Login Page ──────────────────────────────────────
 router.get('/login', (req, res) => {
   if (req.session?.user) return res.redirect('/');
-  res.render('login', { error: null, user: null });
+  const t = getTranslations(req.session?.lang || 'fr');
+  res.render('login', { error: null, user: null, t });
 });
 
 // ─── Login Action ────────────────────────────────────
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
   const db = getDb();
+  const t = getTranslations(req.session?.lang || 'fr');
 
   const user = db.prepare('SELECT * FROM users WHERE username = ? AND is_active = 1').get(username);
 
   if (!user || !bcrypt.compareSync(password, user.password)) {
-    return res.render('login', { error: 'Identifiants incorrects', user: null });
+    return res.render('login', { error: t.login_error, user: null, t });
   }
 
   // Update last seen

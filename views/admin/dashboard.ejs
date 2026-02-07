@@ -2,12 +2,12 @@
 
 <div class="page-header">
   <div>
-    <h1 class="page-title">Dashboard Administration</h1>
-    <p class="page-subtitle">Vue d'ensemble de l'activité</p>
+    <h1 class="page-title"><%= t.admin_title %></h1>
+    <p class="page-subtitle"><%= t.admin_subtitle %></p>
   </div>
   <div class="admin-quick-links">
-    <a href="/projects" class="btn btn-ghost">👨‍💻 Projets</a>
-    <a href="/tickets" class="btn btn-ghost">🎧 Tickets</a>
+    <a href="/projects" class="btn btn-ghost"><%= t.admin_quick_projects %></a>
+    <a href="/tickets" class="btn btn-ghost"><%= t.admin_quick_tickets %></a>
   </div>
 </div>
 
@@ -19,7 +19,7 @@
     </div>
     <div class="admin-stat-info">
       <div class="admin-stat-value"><%= stats.users %></div>
-      <div class="admin-stat-label">Utilisateurs actifs</div>
+      <div class="admin-stat-label"><%= t.admin_stat_users %></div>
     </div>
   </div>
   <div class="admin-stat-card">
@@ -28,7 +28,7 @@
     </div>
     <div class="admin-stat-info">
       <div class="admin-stat-value"><%= stats.projects %></div>
-      <div class="admin-stat-label">Projets actifs</div>
+      <div class="admin-stat-label"><%= t.admin_stat_projects %></div>
     </div>
   </div>
   <div class="admin-stat-card">
@@ -37,7 +37,7 @@
     </div>
     <div class="admin-stat-info">
       <div class="admin-stat-value"><%= stats.activeTasks %></div>
-      <div class="admin-stat-label">Tâches en cours</div>
+      <div class="admin-stat-label"><%= t.admin_stat_tasks %></div>
     </div>
   </div>
   <div class="admin-stat-card">
@@ -46,7 +46,7 @@
     </div>
     <div class="admin-stat-info">
       <div class="admin-stat-value"><%= stats.openTickets %></div>
-      <div class="admin-stat-label">Tickets ouverts</div>
+      <div class="admin-stat-label"><%= t.admin_stat_open_tickets %></div>
     </div>
   </div>
   <div class="admin-stat-card admin-stat-warning">
@@ -55,7 +55,7 @@
     </div>
     <div class="admin-stat-info">
       <div class="admin-stat-value"><%= stats.urgentTickets %></div>
-      <div class="admin-stat-label">Tickets urgents</div>
+      <div class="admin-stat-label"><%= t.admin_stat_urgent %></div>
     </div>
   </div>
   <div class="admin-stat-card">
@@ -64,7 +64,7 @@
     </div>
     <div class="admin-stat-info">
       <div class="admin-stat-value"><%= stats.escalations %></div>
-      <div class="admin-stat-label">Escalades actives</div>
+      <div class="admin-stat-label"><%= t.admin_stat_escalations %></div>
     </div>
   </div>
 </div>
@@ -72,11 +72,11 @@
 <!-- Charts Row -->
 <div class="admin-charts-row">
   <div class="chart-card">
-    <h3>Tickets par statut</h3>
+    <h3><%= t.admin_chart_tickets %></h3>
     <div class="mini-chart">
       <% const ticketTotal = Object.values(ticketsByStatus).reduce((a,b) => a+b, 0) || 1;
          const tColors = { open: '#10b981', in_progress: '#3b82f6', waiting: '#f59e0b', resolved: '#8b5cf6', closed: '#64748b' };
-         const tLabels = { open: 'Ouvert', in_progress: 'En cours', waiting: 'En attente', resolved: 'Résolu', closed: 'Fermé' };
+         const tLabels = { open: t.tstatus_open, in_progress: t.tstatus_in_progress, waiting: t.tstatus_waiting, resolved: t.tstatus_resolved, closed: t.tstatus_closed };
       %>
       <div class="bar-chart">
         <% Object.entries(ticketsByStatus).forEach(([key, val]) => { %>
@@ -92,11 +92,11 @@
     </div>
   </div>
   <div class="chart-card">
-    <h3>Tâches par statut</h3>
+    <h3><%= t.admin_chart_tasks %></h3>
     <div class="mini-chart">
       <% const taskTotal = Object.values(tasksByStatus).reduce((a,b) => a+b, 0) || 1;
          const sColors = { backlog: '#64748b', todo: '#6366f1', in_progress: '#f59e0b', review: '#8b5cf6', done: '#10b981' };
-         const sLabels = { backlog: 'Backlog', todo: 'À faire', in_progress: 'En cours', review: 'En revue', done: 'Terminé' };
+         const sLabels = { backlog: t.status_backlog, todo: t.status_todo, in_progress: t.status_in_progress, review: t.status_review, done: t.status_done };
       %>
       <div class="bar-chart">
         <% Object.entries(tasksByStatus).forEach(([key, val]) => { %>
@@ -115,7 +115,7 @@
 
 <!-- Activity Log -->
 <div class="activity-section">
-  <h3>Activité récente</h3>
+  <h3><%= t.admin_recent_activity %></h3>
   <div class="activity-list">
     <% recentActivity.forEach(act => { %>
       <div class="activity-item">
@@ -126,11 +126,11 @@
           <span class="activity-entity"><%= act.entity_type %></span>
           <% if (act.details) { %><span class="activity-details">— <%= act.details %></span><% } %>
         </div>
-        <time class="activity-time"><%= new Date(act.created_at).toLocaleString('fr-FR') %></time>
+        <time class="activity-time"><%= new Date(act.created_at).toLocaleString(dateLocale) %></time>
       </div>
     <% }) %>
     <% if (recentActivity.length === 0) { %>
-      <p class="text-muted">Aucune activité enregistrée.</p>
+      <p class="text-muted"><%= t.admin_no_activity %></p>
     <% } %>
   </div>
 </div>

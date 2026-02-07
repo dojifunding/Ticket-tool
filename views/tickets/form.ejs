@@ -2,63 +2,62 @@
 
 <div class="page-header">
   <div>
-    <a href="/tickets" class="back-link">← Tickets</a>
-    <h1 class="page-title">Nouveau ticket</h1>
+    <a href="/tickets" class="back-link"><%= t.ticket_form_back %></a>
+    <h1 class="page-title"><%= t.ticket_form_title %></h1>
   </div>
 </div>
 
 <div class="form-container">
   <form method="POST" action="/tickets/new" class="form-card">
     <div class="form-group">
-      <label for="subject">Sujet *</label>
-      <input type="text" id="subject" name="subject" required placeholder="Ex: Impossible de se connecter au compte">
+      <label for="subject"><%= t.ticket_form_subject %></label>
+      <input type="text" id="subject" name="subject" required placeholder="<%= t.ticket_form_subject_placeholder %>">
     </div>
 
     <div class="form-group">
-      <label for="description">Description détaillée *</label>
-      <textarea id="description" name="description" rows="5" required
-        placeholder="Décrivez le problème en détail : ce que l'utilisateur a fait, ce qu'il s'est passé, le message d'erreur éventuel..."></textarea>
+      <label for="description"><%= t.ticket_form_description %></label>
+      <textarea id="description" name="description" rows="5" required placeholder="<%= t.ticket_form_desc_placeholder %>"></textarea>
     </div>
 
     <div class="form-row">
       <div class="form-group">
-        <label for="client_name">Nom du client</label>
-        <input type="text" id="client_name" name="client_name" placeholder="Jean Dupont">
+        <label for="client_name"><%= t.ticket_form_client_name %></label>
+        <input type="text" id="client_name" name="client_name" placeholder="<%= t.ticket_form_client_name_placeholder %>">
       </div>
       <div class="form-group">
-        <label for="client_email">Email du client</label>
-        <input type="email" id="client_email" name="client_email" placeholder="jean@example.com">
+        <label for="client_email"><%= t.ticket_form_client_email %></label>
+        <input type="email" id="client_email" name="client_email" placeholder="<%= t.ticket_form_client_email_placeholder %>">
       </div>
     </div>
 
     <div class="form-row">
       <div class="form-group">
-        <label for="priority">Priorité</label>
+        <label for="priority"><%= t.label_priority %></label>
         <select id="priority" name="priority">
-          <option value="low">🟢 Basse</option>
-          <option value="medium" selected>🟡 Moyenne</option>
-          <option value="high">🟠 Haute</option>
-          <option value="urgent">🔴 Urgent</option>
+          <option value="low"><%= t.priority_low %></option>
+          <option value="medium" selected><%= t.priority_medium %></option>
+          <option value="high"><%= t.priority_high %></option>
+          <option value="urgent"><%= t.priority_urgent %></option>
         </select>
       </div>
       <div class="form-group">
-        <label for="category">Catégorie</label>
+        <label for="category"><%= t.label_category %></label>
         <select id="category" name="category">
-          <option value="general">Général</option>
-          <option value="bug">Bug</option>
-          <option value="question">Question</option>
-          <option value="feature_request">Demande de fonctionnalité</option>
-          <option value="account">Compte</option>
-          <option value="billing">Facturation</option>
-          <option value="other">Autre</option>
+          <option value="general"><%= t.cat_general %></option>
+          <option value="bug"><%= t.cat_bug %></option>
+          <option value="question"><%= t.cat_question %></option>
+          <option value="feature_request"><%= t.cat_feature_request %></option>
+          <option value="account"><%= t.cat_account %></option>
+          <option value="billing"><%= t.cat_billing %></option>
+          <option value="other"><%= t.cat_other %></option>
         </select>
       </div>
     </div>
 
     <div class="form-group">
-      <label for="assigned_to">Assigner à</label>
+      <label for="assigned_to"><%= t.ticket_form_assign %></label>
       <select id="assigned_to" name="assigned_to">
-        <option value="">Non assigné</option>
+        <option value=""><%= t.not_assigned %></option>
         <% agents.forEach(a => { %>
           <option value="<%= a.id %>"><%= a.full_name %></option>
         <% }) %>
@@ -66,8 +65,8 @@
     </div>
 
     <div class="form-actions">
-      <a href="/tickets" class="btn btn-ghost">Annuler</a>
-      <button type="submit" class="btn btn-primary">Créer le ticket</button>
+      <a href="/tickets" class="btn btn-ghost"><%= t.cancel %></a>
+      <button type="submit" class="btn btn-primary"><%= t.ticket_form_create %></button>
     </div>
   </form>
 </div>

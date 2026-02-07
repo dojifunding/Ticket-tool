@@ -1,20 +1,26 @@
 <% var body = '' %>
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="<%= t.lang %>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Connexion — ProjectHub</title>
+  <title><%= t.login_title %> — ProjectHub</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body class="login-body">
   <div class="login-container">
     <div class="login-card">
+      <!-- Language Toggle -->
+      <div class="lang-toggle-login">
+        <a href="/lang/fr" class="lang-btn <%= t.lang === 'fr' ? 'active' : '' %>">🇫🇷 FR</a>
+        <a href="/lang/en" class="lang-btn <%= t.lang === 'en' ? 'active' : '' %>">🇬🇧 EN</a>
+      </div>
+
       <div class="login-header">
         <div class="logo-icon logo-icon-lg">P</div>
         <h1>ProjectHub</h1>
-        <p>Connectez-vous à votre espace de travail</p>
+        <p><%= t.login_subtitle %></p>
       </div>
 
       <% if (typeof error !== 'undefined' && error) { %>
@@ -26,32 +32,32 @@
 
       <form method="POST" action="/login" class="login-form">
         <div class="form-group">
-          <label for="username">Identifiant</label>
-          <input type="text" id="username" name="username" required autofocus placeholder="Votre identifiant">
+          <label for="username"><%= t.login_username %></label>
+          <input type="text" id="username" name="username" required autofocus placeholder="<%= t.login_username_placeholder %>">
         </div>
         <div class="form-group">
-          <label for="password">Mot de passe</label>
-          <input type="password" id="password" name="password" required placeholder="Votre mot de passe">
+          <label for="password"><%= t.login_password %></label>
+          <input type="password" id="password" name="password" required placeholder="<%= t.login_password_placeholder %>">
         </div>
         <button type="submit" class="btn btn-primary btn-full">
-          Se connecter
+          <%= t.login_submit %>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </button>
       </form>
 
       <div class="login-demo">
-        <p>Comptes de démonstration :</p>
+        <p><%= t.login_demo_title %></p>
         <div class="demo-accounts">
           <button onclick="fillLogin('admin','admin123')" class="demo-btn">
-            <span class="demo-role">👑 Admin</span>
+            <span class="demo-role"><%= t.role_admin %></span>
             <span class="demo-creds">admin / admin123</span>
           </button>
           <button onclick="fillLogin('dev1','dev123')" class="demo-btn">
-            <span class="demo-role">👨‍💻 Dev</span>
+            <span class="demo-role"><%= t.role_developer_short %></span>
             <span class="demo-creds">dev1 / dev123</span>
           </button>
           <button onclick="fillLogin('support1','support123')" class="demo-btn">
-            <span class="demo-role">🎧 Support</span>
+            <span class="demo-role"><%= t.role_support %></span>
             <span class="demo-creds">support1 / support123</span>
           </button>
         </div>

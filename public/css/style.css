@@ -2144,3 +2144,53 @@ input, select, textarea, button {
 .projects-grid > :nth-child(4) { animation-delay: 150ms; }
 .projects-grid > :nth-child(5) { animation-delay: 200ms; }
 .projects-grid > :nth-child(6) { animation-delay: 250ms; }
+
+/* ─── Language Toggle ──────────────────────────────── */
+.lang-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 2px;
+}
+.lang-toggle .lang-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: all 0.2s;
+}
+.lang-toggle .lang-btn:hover {
+  color: var(--text-primary);
+}
+.lang-toggle .lang-btn.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* Login page lang toggle */
+.lang-toggle-login {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 1.5rem;
+}
+.lang-toggle-login .lang-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  background: var(--bg-tertiary);
+  transition: all 0.2s;
+}
+.lang-toggle-login .lang-btn:hover {
+  color: var(--text-primary);
+}
+.lang-toggle-login .lang-btn.active {
+  background: var(--primary);
+  color: #fff;
+}

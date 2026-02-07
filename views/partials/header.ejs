@@ -5,12 +5,18 @@
 
   <div class="search-bar">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-    <input type="text" id="globalSearch" placeholder="Rechercher tickets, tâches, projets..." autocomplete="off">
+    <input type="text" id="globalSearch" placeholder="<%= t.search_placeholder %>" autocomplete="off">
     <div class="search-results" id="searchResults"></div>
   </div>
 
   <div class="header-actions">
-    <div class="online-indicator" id="onlineUsers" title="Utilisateurs en ligne">
+    <!-- Language Toggle -->
+    <div class="lang-toggle">
+      <a href="/lang/fr" class="lang-btn <%= t.lang === 'fr' ? 'active' : '' %>" title="Français">FR</a>
+      <a href="/lang/en" class="lang-btn <%= t.lang === 'en' ? 'active' : '' %>" title="English">EN</a>
+    </div>
+
+    <div class="online-indicator" id="onlineUsers" title="<%= t.online_users %>">
       <div class="online-dot"></div>
       <span id="onlineCount">0</span>
     </div>
@@ -22,11 +28,11 @@
       </button>
       <div class="notif-dropdown" id="notifDropdown">
         <div class="notif-header">
-          <h3>Notifications</h3>
-          <button onclick="markAllRead()" class="notif-mark-all">Tout lire</button>
+          <h3><%= t.notifications %></h3>
+          <button onclick="markAllRead()" class="notif-mark-all"><%= t.mark_all_read %></button>
         </div>
         <div class="notif-list" id="notifList">
-          <div class="notif-empty">Aucune notification</div>
+          <div class="notif-empty"><%= t.no_notifications %></div>
         </div>
       </div>
     </div>
