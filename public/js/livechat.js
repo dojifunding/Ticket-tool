@@ -196,22 +196,36 @@
       });
       const data = await res.json();
       if (data.ok) {
+        // Server may have created a new session if old token was invalid
+        if (data.session.visitor_token !== state.token) {
+          state.token = data.session.visitor_token;
+          localStorage.setItem(STORAGE_KEY, state.token);
+        }
         state.session = data.session;
         state.messages = data.messages || [];
         state.mode = data.session.status;
         if (state.mode === 'closed') {
-          // Show conversation history with new chat option
           showChatUI();
-          showClosedState(null); // null = use default message, don't add duplicate
+          showClosedState(null);
         } else {
           showChatUI();
           connectSocket();
         }
       } else {
-        localStorage.removeItem(STORAGE_KEY);
-        state.token = null;
+        resetSession();
       }
-    } catch (e) { console.error('[Livechat] Resume error:', e); }
+    } catch (e) {
+      console.error('[Livechat] Resume error:', e);
+      resetSession();
+    }
+  }
+
+  function resetSession() {
+    localStorage.removeItem(STORAGE_KEY);
+    state.token = null;
+    state.messages = [];
+    state.mode = 'ai';
+    state.session = null;
   }
 
   // ─── Show Chat UI ─────────────────────────────────
@@ -304,6 +318,23 @@
       const data = await res.json();
 
       document.getElementById('lc-typing').style.display = 'none';
+
+      // Session expired or DB reset — auto-reset
+      if (!res.ok && (data.error === 'Session not found' || res.status === 404)) {
+        resetSession();
+        const sysMsg = {
+          sender_type: 'ai', sender_name: 'System',
+          content: state.lang === 'fr'
+            ? '⚠️ Votre session a expiré. Veuillez démarrer une nouvelle conversation.'
+            : '⚠️ Your session has expired. Please start a new conversation.',
+          created_at: new Date().toISOString()
+        };
+        appendMessageDOM(sysMsg);
+        scrollToBottom();
+        // Show new chat button
+        setTimeout(() => { if (window._lcNewChat) window._lcNewChat(); }, 2000);
+        return;
+      }
 
       if (data.aiMessage) {
         state.messages.push(data.aiMessage);
