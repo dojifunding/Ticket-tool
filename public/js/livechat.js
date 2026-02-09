@@ -310,6 +310,16 @@
     // Headers: ### → bold, ## → bold, # → bold
     html = html.replace(/^#{1,3}\s+(.+)$/gm, '<strong>$1</strong>');
 
+    // Links: [text](url) → clickable <a> tag
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:#818cf8;text-decoration:underline">$1</a>');
+
+    // Emoji links: 🔗 standalone URLs
+    html = html.replace(/(https?:\/\/[^\s<]+)/g, function(match) {
+      // Don't double-wrap if already inside an <a> tag
+      if (html.indexOf('href="' + match) !== -1) return match;
+      return '<a href="' + match + '" target="_blank" style="color:#818cf8;text-decoration:underline">' + match + '</a>';
+    });
+
     // Line breaks
     html = html.replace(/\n/g, '<br>');
 

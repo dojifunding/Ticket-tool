@@ -183,9 +183,18 @@ router.post('/message', async (req, res) => {
         if (bestMatch && bestScore >= 4 && qKeywords.length >= 2) {
           const lang = req.session?.lang || 'fr';
           const articleUrl = '/help/article/' + bestMatch.slug;
+          // Clean content: remove markdown headers for chat display, keep first ~1200 chars
+          let cleanContent = bestMatch.content
+            .replace(/^#{1,3}\s+/gm, '**') // ## Header → **Header
+            .replace(/\n{3,}/g, '\n\n');
+          if (cleanContent.length > 1200) {
+            // Cut at last sentence boundary
+            const cut = cleanContent.lastIndexOf('.', 1200);
+            cleanContent = cleanContent.substring(0, cut > 800 ? cut + 1 : 1200) + '...';
+          }
           const faqReply = lang === 'fr'
-            ? `D'après notre FAQ :\n\n**${bestMatch.title}**\n\n${bestMatch.content.substring(0, 800)}\n\n🔗 [Lire l'article complet](${articleUrl})`
-            : `From our FAQ:\n\n**${bestMatch.title}**\n\n${bestMatch.content.substring(0, 800)}\n\n🔗 [Read the full article](${articleUrl})`;
+            ? `D'après notre FAQ :\n\n**${bestMatch.title}**\n\n${cleanContent}\n\n🔗 [Lire l'article complet](${articleUrl})`
+            : `From our FAQ:\n\n**${bestMatch.title}**\n\n${cleanContent}\n\n🔗 [Read the full article](${articleUrl})`;
 
           db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
             .run(session.id, 'ai', 'Assistant', faqReply);
