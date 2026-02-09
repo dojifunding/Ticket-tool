@@ -317,71 +317,101 @@ async function analyzeImage(base64Data, mimeType, instruction) {
 // ─── Generate Article from Knowledge Base ────────────
 async function generateFromKB(kbEntries, lang = 'fr', categoryList = '') {
   const langLabel = lang === 'en' ? 'English' : 'French';
+  const cats = categoryList || 'getting-started, account, billing, features, troubleshooting, integrations, rules, trading';
 
-  // Pre-split large KB entries into numbered sections
+  // ─── Step 1: Split ALL KB entries into individual sections ───
   const sections = [];
   for (const kb of kbEntries) {
-    if (kb.content.length < 800) {
+    if (kb.content.length < 600) {
       sections.push({ source: kb.title, text: kb.content });
       continue;
     }
     // Split on numbered headings: "1. ", "20. ", "## ", etc.
-    const parts = kb.content.split(/\n(?=\d{1,2}\.\s+[A-Z0-9★◆■])|(?=\n#{1,3}\s)/g).filter(s => s.trim().length > 30);
+    const parts = kb.content.split(/\n(?=\d{1,2}\.\s+[A-Z0-9★◆■●▶])|(?=\n#{1,3}\s)/g).filter(s => s.trim().length > 30);
     if (parts.length <= 1) {
-      sections.push({ source: kb.title, text: kb.content.substring(0, 6000) });
+      // Try splitting on double newlines for unstructured docs
+      const paraParts = kb.content.split(/\n\n+/).filter(s => s.trim().length > 50);
+      if (paraParts.length > 3) {
+        // Group paragraphs into chunks of ~1500 chars
+        let chunk = '';
+        for (const p of paraParts) {
+          if (chunk.length + p.length > 1500 && chunk.length > 200) {
+            sections.push({ source: kb.title, text: chunk.trim() });
+            chunk = '';
+          }
+          chunk += p + '\n\n';
+        }
+        if (chunk.trim().length > 50) sections.push({ source: kb.title, text: chunk.trim() });
+      } else {
+        sections.push({ source: kb.title, text: kb.content.substring(0, 3000) });
+      }
     } else {
-      parts.forEach(p => sections.push({ source: kb.title, text: p.trim() }));
+      // Merge very small sections together
+      let merged = '';
+      for (const p of parts) {
+        if (merged.length + p.length > 2000 && merged.length > 200) {
+          sections.push({ source: kb.title, text: merged.trim() });
+          merged = '';
+        }
+        merged += p.trim() + '\n\n';
+      }
+      if (merged.trim().length > 30) sections.push({ source: kb.title, text: merged.trim() });
     }
   }
 
-  // Build context: each section as a numbered block, capped at 14K
-  let kbText = '';
-  const maxTotal = 14000;
-  sections.forEach((s, i) => {
-    const block = `--- SECTION ${i + 1} (from "${s.source}") ---\n${s.text}\n\n`;
-    if (kbText.length + block.length <= maxTotal) kbText += block;
-  });
+  console.log('[AI] KB split into', sections.length, 'sections from', kbEntries.length, 'entries');
 
-  const cats = categoryList || 'getting-started, account, billing, features, troubleshooting, integrations, rules, trading';
-
-  const systemPrompt = `You are a FAQ article generator for a customer help center. Your CRITICAL job is to split knowledge base content into MULTIPLE SEPARATE FAQ articles.
-
-ABSOLUTE RULES:
-1. Generate MULTIPLE articles (5-15 articles). NEVER generate just 1 article.
-2. Each article must focus on ONE specific topic or question a customer would ask.
-3. Article titles must be written as customer questions or clear topic names. Examples:
-   - "Comment fonctionne le compte 25K Static ?"
-   - "Quels sont les frais d'activation ?"
-   - "Règles de drawdown et perte maximale"
-4. Each article is SHORT: 150-400 words max. NOT a full dump of the source material.
-5. Assign each article to a category from: ${cats}
-6. Write in ${langLabel}
-7. Use Markdown: ## for sub-headings, **bold** for key info, bullet lists for rules/steps
-8. Add a short excerpt (1 sentence summary) for each article
-9. Return ONLY a valid JSON array, no other text:
-[
-  { "title": "...", "excerpt": "...", "content": "...", "category_suggestion": "slug-here" },
-  { "title": "...", "excerpt": "...", "content": "...", "category_suggestion": "slug-here" }
-]
-
-THINK: What would a customer search for? Each answer = 1 article. Split by topic, not by section number.`;
-
-  const userMsg = `Split this knowledge base content into MULTIPLE FAQ articles (at least 5):\n\n${kbText}`;
-
-  const result = await callClaude(systemPrompt, userMsg, 4096);
-  try {
-    const clean = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const articles = JSON.parse(clean);
-    // Validate: must be array with multiple items
-    if (!Array.isArray(articles) || articles.length === 0) {
-      throw new Error('Not an array');
-    }
-    return articles;
-  } catch (e) {
-    console.error('[AI] Failed to parse KB article generation:', e.message);
-    // Try to salvage by splitting the single result
-    return [{ title: 'Generated Article', excerpt: '', content: result.substring(0, 2000), category_suggestion: 'general' }];
+  // ─── Step 2: Batch sections (5 per batch) & call AI for each ───
+  const BATCH_SIZE = 5;
+  const batches = [];
+  for (let i = 0; i < sections.length; i += BATCH_SIZE) {
+    batches.push(sections.slice(i, i + BATCH_SIZE));
   }
+
+  const systemPrompt = `You are a FAQ article generator. Convert knowledge base sections into customer-friendly FAQ articles.
+
+RULES:
+- Write in ${langLabel}
+- Generate 2-5 short FAQ articles from the sections below
+- Each article: ONE specific topic, 100-300 words, clear title (as a question or topic name)
+- Assign a category from: ${cats}
+- Use Markdown: **bold** for key info, bullet lists for rules/steps
+- Return ONLY a JSON array: [{"title":"...","excerpt":"...","content":"...","category_suggestion":"slug"}]
+- NO other text before or after the JSON`;
+
+  const allArticles = [];
+
+  // Process batches (max 6 to stay reasonable on API calls)
+  const maxBatches = Math.min(batches.length, 6);
+  for (let b = 0; b < maxBatches; b++) {
+    const batch = batches[b];
+    let batchText = '';
+    batch.forEach((s, i) => {
+      const text = s.text.substring(0, 2000);
+      batchText += `--- SECTION ${i + 1} (${s.source}) ---\n${text}\n\n`;
+    });
+
+    console.log('[AI] KB batch', b + 1, '/', maxBatches, '—', batchText.length, 'chars');
+
+    try {
+      const result = await callClaude(systemPrompt, `Generate FAQ articles from these sections:\n\n${batchText}`, 2048);
+      const clean = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const articles = JSON.parse(clean);
+      if (Array.isArray(articles)) {
+        allArticles.push(...articles.filter(a => a.title && a.content));
+      }
+    } catch (e) {
+      console.error('[AI] KB batch', b + 1, 'error:', e.message);
+    }
+  }
+
+  console.log('[AI] KB generation complete:', allArticles.length, 'articles from', maxBatches, 'batches');
+
+  if (allArticles.length === 0) {
+    return [{ title: 'Erreur de génération', excerpt: '', content: 'L\'IA n\'a pas pu générer d\'articles. Réessayez.', category_suggestion: 'general' }];
+  }
+
+  return allArticles;
 }
 
 // ─── Analyze Ticket/Chat Patterns → Suggest Articles ─

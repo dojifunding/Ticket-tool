@@ -2241,3 +2241,9 @@ input, select, textarea, button {
 .ai-cat-select { padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card); color: var(--text-primary); font-size: 0.85rem; max-width: 200px; }
 .ai-article-excerpt { font-size: 0.85rem; color: var(--text-secondary); margin: 0.4rem 0 0; }
 .ai-article-preview { font-size: 0.8rem; color: var(--text-secondary); white-space: pre-wrap; max-height: 150px; overflow-y: auto; background: var(--bg-card); padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; }
+
+/* ─── AI Progress Bar ─────────────────────────────── */
+.ai-progress { margin: 1rem 0; }
+.ai-progress-bar { height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
+.ai-progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), #8b5cf6); border-radius: 3px; transition: width 0.5s ease; width: 0%; }
+.ai-progress-text { font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem; }

@@ -168,6 +168,12 @@
         </button>
       </div>
 
+      <!-- Progress indicator -->
+      <div id="aiProgress" class="ai-progress" style="display:none">
+        <div class="ai-progress-bar"><div class="ai-progress-fill" id="aiProgressFill"></div></div>
+        <p class="ai-progress-text" id="aiProgressText">Analyse en cours...</p>
+      </div>
+
       <div id="aiResult" class="ai-result" style="display:none">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
           <h3 style="margin:0"><%= t.articles_ai_result %> — <span id="aiResultCount">0</span> articles</h3>
@@ -211,19 +217,46 @@ function switchAiTab(tab) {
 let aiGeneratedData = null;
 
 // ─── Async Job Polling ───
-function pollJob(jobId, interval = 2000, maxTime = 120000) {
+function pollJob(jobId, interval = 2000, maxTime = 180000) {
+  const progress = document.getElementById('aiProgress');
+  const progressFill = document.getElementById('aiProgressFill');
+  const progressText = document.getElementById('aiProgressText');
+  let pollCount = 0;
+
+  const messages = [
+    'Analyse du contenu de la base de connaissances...',
+    'Découpage en sections thématiques...',
+    'Génération des articles FAQ (batch 1)...',
+    'Génération des articles FAQ (batch 2)...',
+    'Génération des articles FAQ (batch 3)...',
+    'Finalisation et classification...',
+    'Presque terminé...'
+  ];
+
+  if (progress) { progress.style.display = 'block'; progressFill.style.width = '5%'; }
+
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const check = async () => {
       try {
+        pollCount++;
+        // Update progress UI
+        if (progressText) progressText.textContent = messages[Math.min(pollCount - 1, messages.length - 1)];
+        if (progressFill) progressFill.style.width = Math.min(5 + pollCount * 12, 90) + '%';
+
         const res = await fetch('/admin/articles/ai/job/' + jobId);
         const job = await res.json();
-        if (job.status === 'done') return resolve(job.result);
-        if (job.status === 'error') return reject(new Error(job.error || 'Erreur IA'));
-        if (job.status === 'not_found') return reject(new Error('Job introuvable'));
-        if (Date.now() - start > maxTime) return reject(new Error('Timeout'));
+        if (job.status === 'done') {
+          if (progressFill) progressFill.style.width = '100%';
+          if (progressText) progressText.textContent = '✅ Terminé !';
+          setTimeout(() => { if (progress) progress.style.display = 'none'; }, 800);
+          return resolve(job.result);
+        }
+        if (job.status === 'error') { if (progress) progress.style.display = 'none'; return reject(new Error(job.error || 'Erreur IA')); }
+        if (job.status === 'not_found') { if (progress) progress.style.display = 'none'; return reject(new Error('Job introuvable')); }
+        if (Date.now() - start > maxTime) { if (progress) progress.style.display = 'none'; return reject(new Error('Timeout')); }
         setTimeout(check, interval);
-      } catch (e) { reject(e); }
+      } catch (e) { if (progress) progress.style.display = 'none'; reject(e); }
     };
     check();
   });
