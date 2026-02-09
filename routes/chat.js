@@ -147,44 +147,55 @@ router.post('/message', async (req, res) => {
     try {
       // ─── FAQ-First Search: try to answer from existing articles (FREE) ───
       const faqFirst = getSetting('ai_livechat_faq_first', '1') === '1';
-      if (faqFirst) {
-        const userQ = content.toLowerCase().replace(/[^a-z\u00e0-\u00ff0-9\s]/gi, ' ');
-        const qWords = userQ.split(/\s+/).filter(w => w.length > 2);
 
-        if (qWords.length > 0) {
-          const faqArticles = db.prepare('SELECT id, title, content, excerpt FROM articles WHERE is_published=1 AND is_public=1').all();
-          let bestMatch = null;
-          let bestScore = 0;
+      // Shared stopwords list for both FAQ-first and KB search
+      const stopwords = new Set(['the','a','an','is','are','was','were','be','been','have','has','had','do','does','did','will','would','shall','should','may','might','must','can','could','i','me','my','we','our','you','your','he','she','it','they','them','their','this','that','what','which','who','how','when','where','why','in','on','at','to','for','with','from','of','and','or','but','not','no','if','so','as','by','up','out','about','into','les','la','le','un','une','des','du','de','est','sont','pour','dans','sur','avec','que','qui','quoi','quel','quelle','comment','pas','ne','se','ce','ces','mon','ton','son','nous','vous','ils','elles','et','ou','mais','donc','car','je','tu','il','elle','on','chez','par','en','au','aux','quelles','quels','phidias','propfirm','trading','trader','traders','compte','comptes','account','accounts']);
 
-          for (const faq of faqArticles) {
-            const lower = (faq.title + ' ' + (faq.excerpt || '') + ' ' + faq.content).toLowerCase();
-            let score = 0;
-            for (const w of qWords) {
-              if (faq.title.toLowerCase().includes(w)) score += 3;
-              else if (lower.includes(w)) score += 1;
-            }
-            // Normalize by keyword count — need >60% match
-            const normalized = score / (qWords.length * 3);
-            if (normalized > 0.4 && score > bestScore) {
-              bestScore = score;
-              bestMatch = faq;
-            }
+      // Extract meaningful keywords (no stopwords, no brand names)
+      const userQ = content.toLowerCase().replace(/[^a-zà-ÿ0-9\s]/gi, ' ');
+      const qKeywords = userQ.split(/\s+/).filter(w => w.length > 2 && !stopwords.has(w));
+
+      if (faqFirst && qKeywords.length > 0) {
+        const faqArticles = db.prepare('SELECT id, title, slug, content, excerpt FROM articles WHERE is_published=1 AND is_public=1').all();
+        let bestMatch = null;
+        let bestScore = 0;
+
+        for (const faq of faqArticles) {
+          const titleLower = faq.title.toLowerCase();
+          const fullLower = (titleLower + ' ' + (faq.excerpt || '') + ' ' + faq.content).toLowerCase();
+          let score = 0;
+          let titleHits = 0;
+
+          for (const w of qKeywords) {
+            if (titleLower.includes(w)) { score += 3; titleHits++; }
+            else if (fullLower.includes(w)) { score += 1; }
           }
 
-          if (bestMatch && bestScore >= 3) {
-            // Direct FAQ answer — no AI cost!
-            const lang = req.session?.lang || 'fr';
-            const excerpt = bestMatch.excerpt || bestMatch.content.substring(0, 200);
-            const faqReply = lang === 'fr'
-              ? `D'après notre FAQ :\n\n**${bestMatch.title}**\n\n${bestMatch.content.substring(0, 800)}\n\n📖 *Consultez l'article complet dans notre centre d'aide.*`
-              : `From our FAQ:\n\n**${bestMatch.title}**\n\n${bestMatch.content.substring(0, 800)}\n\n📖 *See the full article in our help center.*`;
-
-            db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
-              .run(session.id, 'ai', 'Assistant', faqReply);
-
-            console.log('[Chat] FAQ-first match! Score:', bestScore, '→', bestMatch.title, '(AI call saved)');
-            return res.json({ ok: true, mode: 'faq', aiMessage: { sender_type: 'ai', sender_name: 'Assistant', content: faqReply, created_at: new Date().toISOString() } });
+          // Need at least 1 keyword in title AND normalized score > threshold
+          const normalized = score / (qKeywords.length * 3);
+          if (titleHits >= 1 && normalized > 0.3 && score > bestScore) {
+            bestScore = score;
+            bestMatch = faq;
           }
+        }
+
+        // High confidence threshold: need significant keyword overlap
+        if (bestMatch && bestScore >= 4 && qKeywords.length >= 2) {
+          const lang = req.session?.lang || 'fr';
+          const articleUrl = '/help/article/' + bestMatch.slug;
+          const faqReply = lang === 'fr'
+            ? `D'après notre FAQ :\n\n**${bestMatch.title}**\n\n${bestMatch.content.substring(0, 800)}\n\n🔗 [Lire l'article complet](${articleUrl})`
+            : `From our FAQ:\n\n**${bestMatch.title}**\n\n${bestMatch.content.substring(0, 800)}\n\n🔗 [Read the full article](${articleUrl})`;
+
+          db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
+            .run(session.id, 'ai', 'Assistant', faqReply);
+
+          console.log('[Chat] FAQ-first match! Score:', bestScore, '| Keywords:', qKeywords.join(','), '→', bestMatch.title, '(AI call saved)');
+          return res.json({ ok: true, mode: 'faq', aiMessage: { sender_type: 'ai', sender_name: 'Assistant', content: faqReply, created_at: new Date().toISOString() } });
+        }
+
+        if (bestMatch) {
+          console.log('[Chat] FAQ-first: best candidate "' + bestMatch.title + '" score=' + bestScore + ' but below threshold → falling through to AI');
         }
       }
 
@@ -192,10 +203,9 @@ router.post('/message', async (req, res) => {
       const kbEntries = db.prepare('SELECT title, content FROM knowledge_base WHERE is_active=1').all();
       const userQuestion = content.toLowerCase();
 
-      // Extract keywords from user question (remove stopwords)
-      const stopwords = new Set(['the','a','an','is','are','was','were','be','been','have','has','had','do','does','did','will','would','shall','should','may','might','must','can','could','i','me','my','we','our','you','your','he','she','it','they','them','their','this','that','what','which','who','how','when','where','why','in','on','at','to','for','with','from','of','and','or','but','not','no','if','so','as','by','up','out','about','into','les','la','le','un','une','des','du','de','est','sont','pour','dans','sur','avec','que','qui','quoi','quel','quelle','comment','pas','ne','se','ce','ces','mon','ton','son','nous','vous','ils','elles','et','ou','mais','donc','car','je','tu','il','elle','on','chez','par','en','au','aux','quelles','quels']);
+      // Extract keywords from user question (reuse stopwords from above)
       const keywords = userQuestion
-        .replace(/[^a-z\u00e0-\u00ff0-9\s]/gi, ' ')
+        .replace(/[^a-zà-ÿ0-9\s]/gi, ' ')
         .split(/\s+/)
         .filter(w => w.length > 1 && !stopwords.has(w));
 
@@ -280,9 +290,9 @@ router.post('/message', async (req, res) => {
         }
       }
 
-      // Gather FAQ articles — ALL published articles, not just 5
-      const faqArticles = db.prepare('SELECT title, content FROM articles WHERE is_published=1 AND is_public=1').all();
-      const faqContext = faqArticles.map(a => `[FAQ: ${a.title}]:\n${a.content.substring(0, 1000)}`).join('\n\n');
+      // Gather FAQ articles — ALL published articles with links
+      const faqArticles = db.prepare('SELECT title, slug, content FROM articles WHERE is_published=1 AND is_public=1').all();
+      const faqContext = faqArticles.map(a => `[FAQ: ${a.title}] (link: /help/article/${a.slug}):\n${a.content.substring(0, 1000)}`).join('\n\n');
 
       // Get chat history (last 10 messages)
       const history = db.prepare('SELECT sender_type, content FROM chat_messages WHERE session_id=? ORDER BY created_at DESC LIMIT 10').all(session.id).reverse();
