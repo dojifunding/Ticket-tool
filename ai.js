@@ -259,7 +259,7 @@ async function extractFromUrl(url) {
     .trim();
 
   // Store up to 20K chars of raw content
-  if (text.length > 20000) text = text.substring(0, 20000) + '\n...(contenu tronqué)';
+  if (text.length > 60000) text = text.substring(0, 60000) + '\n...(contenu tronqué)';
 
   return { raw: text, processed: text, url, method: result.method };
 }
