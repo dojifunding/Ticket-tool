@@ -7,7 +7,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/help.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
   <link rel="stylesheet" href="/css/livechat.css">
 </head>
 <body class="help-body">
@@ -54,7 +53,7 @@
         </div>
       </div>
 
-      <div class="help-article-content" id="articleContent"></div>
+      <div class="help-article-content"><%- article.renderedContent %></div>
     </article>
 
     <% if (related.length > 0) { %>
@@ -78,10 +77,6 @@
     <p>© <%= new Date().getFullYear() %> ProjectHub — <%= t.help_footer %></p>
   </footer>
 
-  <script>
-    const raw = <%= JSON.stringify(article.displayContent) %>;
-    document.getElementById('articleContent').innerHTML = marked.parse(raw);
-  </script>
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/livechat.js"></script>
 </body>

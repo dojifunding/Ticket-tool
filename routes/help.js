@@ -1,6 +1,17 @@
 const router = require('express').Router();
 const { getDb, generateTicketRef } = require('../database');
 const { getTranslations, getDateLocale } = require('../i18n');
+const { marked } = require('marked');
+
+// Configure marked for safe rendering
+marked.setOptions({ breaks: true, gfm: true });
+
+// Render markdown to HTML server-side
+function renderMarkdown(md) {
+  if (!md) return '<p><em>Contenu non disponible.</em></p>';
+  try { return marked.parse(md); }
+  catch (e) { return '<pre>' + md.replace(/</g, '&lt;') + '</pre>'; }
+}
 
 // Helper: get lang-aware field
 function locField(row, field, lang) {
@@ -139,11 +150,14 @@ router.get('/article/:slug', (req, res) => {
     ORDER BY a.views DESC LIMIT 4
   `).all(article.category_id, article.id);
 
+  const rawContent = locField(article, 'content', lang);
+
   res.render('help/article', {
     article: {
       ...article,
       displayTitle: locField(article, 'title', lang),
-      displayContent: locField(article, 'content', lang),
+      displayContent: rawContent,
+      renderedContent: renderMarkdown(rawContent),
       displayExcerpt: locField(article, 'excerpt', lang),
       displayCategory: locField(article, 'category_name', lang)
     },

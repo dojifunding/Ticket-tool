@@ -226,11 +226,16 @@ function pollJob(jobId, interval = 2000, maxTime = 180000) {
   const messages = [
     'Analyse du contenu de la base de connaissances...',
     'Découpage en sections thématiques...',
-    'Génération des articles FAQ (batch 1)...',
-    'Génération des articles FAQ (batch 2)...',
-    'Génération des articles FAQ (batch 3)...',
-    'Finalisation et classification...',
-    'Presque terminé...'
+    'Génération des articles FAQ (lot 1)...',
+    'Génération des articles FAQ (lot 2)...',
+    'Génération des articles FAQ (lot 3)...',
+    'Génération des articles FAQ (lot 4)...',
+    'Génération des articles FAQ (lot 5)...',
+    'Génération des articles FAQ (lot 6)...',
+    'Génération en cours...',
+    'Classification des articles...',
+    'Presque terminé...',
+    'Finalisation...'
   ];
 
   if (progress) { progress.style.display = 'block'; progressFill.style.width = '5%'; }
@@ -242,7 +247,7 @@ function pollJob(jobId, interval = 2000, maxTime = 180000) {
         pollCount++;
         // Update progress UI
         if (progressText) progressText.textContent = messages[Math.min(pollCount - 1, messages.length - 1)];
-        if (progressFill) progressFill.style.width = Math.min(5 + pollCount * 12, 90) + '%';
+        if (progressFill) progressFill.style.width = Math.min(5 + pollCount * 6, 90) + '%';
 
         const res = await fetch('/admin/articles/ai/job/' + jobId);
         const job = await res.json();

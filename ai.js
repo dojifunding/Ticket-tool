@@ -326,10 +326,34 @@ async function generateFromKB(kbEntries, lang = 'fr', categoryList = '') {
       sections.push({ source: kb.title, text: kb.content });
       continue;
     }
-    // Split on numbered headings: "1. ", "20. ", "## ", etc.
-    const parts = kb.content.split(/\n(?=\d{1,2}\.\s+[A-Z0-9★◆■●▶])|(?=\n#{1,3}\s)/g).filter(s => s.trim().length > 30);
-    if (parts.length <= 1) {
-      // Try splitting on double newlines for unstructured docs
+
+    // Try multiple splitting strategies for robustness
+    let parts = [];
+
+    // Strategy 1: Markdown headings (## Title, ### Title)
+    const mdParts = kb.content.split(/\n(?=#{1,3}\s)/).filter(s => s.trim().length > 30);
+    if (mdParts.length > 3) { parts = mdParts; }
+
+    // Strategy 2: Numbered sections (1. Title, 20. Title) — case-insensitive
+    if (parts.length <= 3) {
+      const numParts = kb.content.split(/\n(?=\d{1,2}\.\s+\S)/).filter(s => s.trim().length > 30);
+      if (numParts.length > parts.length) parts = numParts;
+    }
+
+    // Strategy 3: Bold headings (**Title**)
+    if (parts.length <= 3) {
+      const boldParts = kb.content.split(/\n(?=\*\*[^*]+\*\*)/).filter(s => s.trim().length > 30);
+      if (boldParts.length > parts.length) parts = boldParts;
+    }
+
+    // Strategy 4: UPPERCASE headings or special chars
+    if (parts.length <= 3) {
+      const upParts = kb.content.split(/\n(?=[A-Z★◆■●▶][A-Z\s★◆■●▶]{4,})/).filter(s => s.trim().length > 30);
+      if (upParts.length > parts.length) parts = upParts;
+    }
+
+    // Strategy 5: Double newlines (last resort for unstructured docs)
+    if (parts.length <= 3) {
       const paraParts = kb.content.split(/\n\n+/).filter(s => s.trim().length > 50);
       if (paraParts.length > 3) {
         // Group paragraphs into chunks of ~1500 chars
@@ -342,63 +366,71 @@ async function generateFromKB(kbEntries, lang = 'fr', categoryList = '') {
           chunk += p + '\n\n';
         }
         if (chunk.trim().length > 50) sections.push({ source: kb.title, text: chunk.trim() });
-      } else {
-        sections.push({ source: kb.title, text: kb.content.substring(0, 3000) });
+        continue; // Skip the merge step below
       }
-    } else {
-      // Merge very small sections together
-      let merged = '';
-      for (const p of parts) {
-        if (merged.length + p.length > 2000 && merged.length > 200) {
-          sections.push({ source: kb.title, text: merged.trim() });
-          merged = '';
-        }
-        merged += p.trim() + '\n\n';
+    }
+
+    // Fallback: single large chunk
+    if (parts.length <= 1) {
+      sections.push({ source: kb.title, text: kb.content.substring(0, 4000) });
+      continue;
+    }
+
+    console.log('[AI] KB "' + kb.title + '": split into', parts.length, 'sections');
+
+    // Keep each section independent (don't merge) — but cap at 3000 chars each
+    for (const p of parts) {
+      if (p.trim().length > 30) {
+        sections.push({ source: kb.title, text: p.trim().substring(0, 3000) });
       }
-      if (merged.trim().length > 30) sections.push({ source: kb.title, text: merged.trim() });
     }
   }
 
-  console.log('[AI] KB split into', sections.length, 'sections from', kbEntries.length, 'entries');
+  console.log('[AI] KB total: ' + sections.length + ' sections from ' + kbEntries.length + ' entries');
 
-  // ─── Step 2: Batch sections (5 per batch) & call AI for each ───
-  const BATCH_SIZE = 5;
+  // ─── Step 2: Batch sections & call AI for each ───
+  const BATCH_SIZE = 4; // Smaller batches = more focused articles
   const batches = [];
   for (let i = 0; i < sections.length; i += BATCH_SIZE) {
     batches.push(sections.slice(i, i + BATCH_SIZE));
   }
 
-  const systemPrompt = `You are a FAQ article generator. Convert knowledge base sections into customer-friendly FAQ articles.
+  const systemPrompt = `You are a FAQ article generator for a customer help center.
+
+TASK: Convert the knowledge base sections below into customer-friendly FAQ articles.
 
 RULES:
 - Write in ${langLabel}
-- Generate 2-5 short FAQ articles from the sections below
-- Each article: ONE specific topic, 100-300 words, clear title (as a question or topic name)
+- Generate 1-3 FAQ articles per section — each about ONE specific topic
+- Titles should be questions or clear topics (e.g. "Quels sont les frais d'activation ?")
+- Each article: 100-400 words, Markdown formatted (## headings, **bold**, bullet lists)
+- Include a short excerpt (1 sentence) for each article
 - Assign a category from: ${cats}
-- Use Markdown: **bold** for key info, bullet lists for rules/steps
-- Return ONLY a JSON array: [{"title":"...","excerpt":"...","content":"...","category_suggestion":"slug"}]
-- NO other text before or after the JSON`;
+- Return ONLY a valid JSON array:
+[{"title":"...","excerpt":"...","content":"...","category_suggestion":"slug"}]
+- NO text outside the JSON`;
 
   const allArticles = [];
 
-  // Process batches (max 6 to stay reasonable on API calls)
-  const maxBatches = Math.min(batches.length, 6);
+  // Process batches (max 10 to cover ~40 sections of a large doc)
+  const maxBatches = Math.min(batches.length, 10);
   for (let b = 0; b < maxBatches; b++) {
     const batch = batches[b];
     let batchText = '';
     batch.forEach((s, i) => {
-      const text = s.text.substring(0, 2000);
+      const text = s.text.substring(0, 2500);
       batchText += `--- SECTION ${i + 1} (${s.source}) ---\n${text}\n\n`;
     });
 
-    console.log('[AI] KB batch', b + 1, '/', maxBatches, '—', batchText.length, 'chars');
+    console.log('[AI] KB batch', b + 1, '/', maxBatches, '—', batchText.length, 'chars,', batch.length, 'sections');
 
     try {
-      const result = await callClaude(systemPrompt, `Generate FAQ articles from these sections:\n\n${batchText}`, 2048);
+      const result = await callClaude(systemPrompt, `Generate FAQ articles from these sections:\n\n${batchText}`, 3000);
       const clean = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const articles = JSON.parse(clean);
       if (Array.isArray(articles)) {
         allArticles.push(...articles.filter(a => a.title && a.content));
+        console.log('[AI] KB batch', b + 1, '→', articles.length, 'articles');
       }
     } catch (e) {
       console.error('[AI] KB batch', b + 1, 'error:', e.message);
