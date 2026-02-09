@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="<%= t.lang %>">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= article.displayTitle %> — <%= t.help_title %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/help.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+</head>
+<body class="help-body">
+  <nav class="help-nav">
+    <div class="help-nav-inner">
+      <a href="/help" class="help-logo">
+        <div class="logo-icon">P</div>
+        <span><%= t.help_title %></span>
+      </a>
+      <div class="help-nav-actions">
+        <div class="lang-toggle">
+          <a href="/lang/fr" class="lang-btn <%= t.lang === 'fr' ? 'active' : '' %>">FR</a>
+          <a href="/lang/en" class="lang-btn <%= t.lang === 'en' ? 'active' : '' %>">EN</a>
+        </div>
+        <% if (user) { %>
+          <a href="/" class="btn btn-ghost btn-sm"><%= t.help_back_app %></a>
+        <% } else { %>
+          <a href="/login" class="btn btn-ghost btn-sm"><%= t.login_submit %></a>
+        <% } %>
+      </div>
+    </div>
+  </nav>
+
+  <main class="help-main">
+    <div class="help-breadcrumb">
+      <a href="/help"><%= t.help_title %></a>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+      <% if (article.category_slug) { %>
+        <a href="/help/category/<%= article.category_slug %>"><%= article.displayCategory %></a>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+      <% } %>
+      <span><%= article.displayTitle %></span>
+    </div>
+
+    <article class="help-article-detail">
+      <div class="help-article-header">
+        <% if (!article.is_public) { %><span class="help-private-badge">🔒 <%= t.help_staff_only %></span><% } %>
+        <h1><%= article.displayTitle %></h1>
+        <div class="help-article-meta">
+          <% if (article.author_name) { %><span>✍️ <%= article.author_name %></span><% } %>
+          <span>📅 <%= new Date(article.updated_at).toLocaleDateString(dateLocale) %></span>
+          <span>👁️ <%= article.views %> <%= t.help_views %></span>
+        </div>
+      </div>
+
+      <div class="help-article-content" id="articleContent"></div>
+    </article>
+
+    <% if (related.length > 0) { %>
+      <section class="help-related">
+        <h3><%= t.help_related %></h3>
+        <div class="help-related-list">
+          <% related.forEach(r => { %>
+            <a href="/help/article/<%= r.slug %>" class="help-related-link"><%= r.displayTitle %></a>
+          <% }) %>
+        </div>
+      </section>
+    <% } %>
+
+    <section class="help-contact help-contact-sm">
+      <p><%= t.help_still_need_help %></p>
+      <a href="/login" class="btn btn-primary btn-sm"><%= t.help_contact_btn %></a>
+    </section>
+  </main>
+
+  <footer class="help-footer">
+    <p>© <%= new Date().getFullYear() %> ProjectHub — <%= t.help_footer %></p>
+  </footer>
+
+  <script>
+    const raw = <%= JSON.stringify(article.displayContent) %>;
+    document.getElementById('articleContent').innerHTML = marked.parse(raw);
+  </script>
+</body>
+</html>

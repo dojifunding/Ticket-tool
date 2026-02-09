@@ -170,6 +170,26 @@ async function initDatabase() {
   db.exec('CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, is_read)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_activity_log_entity ON activity_log(entity_type, entity_id)');
 
+  // ─── Help Center Tables ─────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS article_categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL,
+    name_en TEXT, icon TEXT DEFAULT '📄', position INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.exec(`CREATE TABLE IF NOT EXISTS articles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, slug TEXT UNIQUE NOT NULL,
+    title_en TEXT, content TEXT NOT NULL, content_en TEXT, excerpt TEXT, excerpt_en TEXT,
+    category_id INTEGER REFERENCES article_categories(id),
+    is_public INTEGER DEFAULT 1, is_published INTEGER DEFAULT 1,
+    author_id INTEGER REFERENCES users(id), views INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_articles_public ON articles(is_public, is_published)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_articles_slug ON articles(slug)');
+
   const adminExists = db.prepare('SELECT id FROM users WHERE role = ?').get('admin');
   if (!adminExists) {
     const c = ['#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6','#8b5cf6'];
@@ -197,6 +217,48 @@ async function initDatabase() {
     ].forEach(t => db.prepare('INSERT INTO tickets (reference,subject,description,status,priority,category,client_name,client_email,assigned_to,created_by) VALUES (?,?,?,?,?,?,?,?,?,4)').run(...t));
 
     console.log('✅ Base de données initialisée avec les données de démo');
+
+    // ─── Help Center Seed Data ──────────────────────
+    const cats = [
+      ['Démarrage', 'getting-started', 'Getting Started', '🚀', 1],
+      ['Compte', 'account', 'Account', '👤', 2],
+      ['Facturation', 'billing', 'Billing', '💳', 3],
+      ['Fonctionnalités', 'features', 'Features', '✨', 4],
+      ['Dépannage', 'troubleshooting', 'Troubleshooting', '🔧', 5],
+      ['Intégrations', 'integrations', 'Integrations', '🔗', 6]
+    ];
+    cats.forEach(c => db.prepare('INSERT INTO article_categories (name,slug,name_en,icon,position) VALUES (?,?,?,?,?)').run(...c));
+
+    const articles = [
+      ['Comment créer un compte ?', 'comment-creer-un-compte', 'How to create an account?',
+       '## Créer votre compte\n\nPour créer un compte sur notre plateforme, suivez ces étapes simples :\n\n1. Rendez-vous sur notre page d\'inscription\n2. Remplissez le formulaire avec vos informations\n3. Vérifiez votre email\n4. Connectez-vous avec vos identifiants\n\n**Astuce :** Utilisez une adresse email que vous consultez régulièrement.\n\n## Besoin d\'aide ?\n\nSi vous rencontrez des difficultés, contactez notre support.',
+       '## Create your account\n\nTo create an account on our platform, follow these simple steps:\n\n1. Go to our registration page\n2. Fill in the form with your information\n3. Verify your email\n4. Log in with your credentials\n\n**Tip:** Use an email address you check regularly.\n\n## Need help?\n\nIf you encounter difficulties, contact our support.',
+       'Guide étape par étape pour créer votre compte.', 'Step-by-step guide to create your account.',
+       1, 1, 1, 1],
+      ['Comment réinitialiser mon mot de passe ?', 'reinitialiser-mot-de-passe', 'How to reset my password?',
+       '## Réinitialiser votre mot de passe\n\n1. Cliquez sur \"Mot de passe oublié\" sur la page de connexion\n2. Entrez votre adresse email\n3. Consultez votre boîte de réception\n4. Cliquez sur le lien de réinitialisation\n5. Choisissez un nouveau mot de passe sécurisé\n\n**Important :** Le lien expire après 24 heures.\n\n## Conseils sécurité\n\n- Utilisez au moins 8 caractères\n- Mélangez lettres, chiffres et symboles\n- Ne réutilisez pas d\'anciens mots de passe',
+       '## Reset your password\n\n1. Click "Forgot password" on the login page\n2. Enter your email address\n3. Check your inbox\n4. Click the reset link\n5. Choose a new secure password\n\n**Important:** The link expires after 24 hours.\n\n## Security tips\n\n- Use at least 8 characters\n- Mix letters, numbers and symbols\n- Don\'t reuse old passwords',
+       'Procédure pour réinitialiser votre mot de passe.', 'Steps to reset your password.',
+       2, 1, 1, 1],
+      ['Comprendre les plans et tarifs', 'plans-et-tarifs', 'Understanding plans and pricing',
+       '## Nos offres\n\n### Plan Basic — Gratuit\n- 1 utilisateur\n- 10 tickets/mois\n- Support par email\n\n### Plan Pro — 29€/mois\n- 5 utilisateurs\n- Tickets illimités\n- Support prioritaire\n- Rapports avancés\n\n### Plan Enterprise — Sur devis\n- Utilisateurs illimités\n- SLA garanti\n- Manager dédié\n- API complète\n\n## Changer de plan\n\nAllez dans **Paramètres > Abonnement** pour modifier votre plan à tout moment.',
+       '## Our plans\n\n### Basic Plan — Free\n- 1 user\n- 10 tickets/month\n- Email support\n\n### Pro Plan — $29/month\n- 5 users\n- Unlimited tickets\n- Priority support\n- Advanced reports\n\n### Enterprise Plan — Custom pricing\n- Unlimited users\n- Guaranteed SLA\n- Dedicated manager\n- Full API\n\n## Change plan\n\nGo to **Settings > Subscription** to change your plan anytime.',
+       'Détail de nos plans Basic, Pro et Enterprise.', 'Details of our Basic, Pro and Enterprise plans.',
+       3, 1, 1, 1],
+      ['Guide de résolution des erreurs courantes', 'erreurs-courantes', 'Common error troubleshooting guide',
+       '## Erreurs courantes\n\n### Erreur 500 — Erreur serveur\n**Cause :** Problème temporaire sur nos serveurs.\n**Solution :** Attendez quelques minutes et réessayez. Si le problème persiste, contactez le support.\n\n### Erreur 403 — Accès refusé\n**Cause :** Vous n\'avez pas les droits nécessaires.\n**Solution :** Vérifiez que votre compte a les permissions requises.\n\n### Page blanche\n**Cause :** Problème de cache navigateur.\n**Solution :** Videz le cache (Ctrl+Shift+Suppr) et rechargez la page.\n\n## Toujours bloqué ?\n\nOuvrez un ticket de support avec une capture d\'écran de l\'erreur.',
+       '## Common errors\n\n### Error 500 — Server error\n**Cause:** Temporary server issue.\n**Solution:** Wait a few minutes and try again. If the problem persists, contact support.\n\n### Error 403 — Access denied\n**Cause:** You don\'t have the required permissions.\n**Solution:** Check that your account has the required permissions.\n\n### Blank page\n**Cause:** Browser cache issue.\n**Solution:** Clear cache (Ctrl+Shift+Delete) and reload.\n\n## Still stuck?\n\nOpen a support ticket with a screenshot of the error.',
+       'Solutions aux erreurs 500, 403 et pages blanches.', 'Solutions for 500, 403 errors and blank pages.',
+       5, 1, 1, 1],
+      ['Procédure interne : Gestion des escalades', 'procedure-escalades', 'Internal: Escalation procedure',
+       '## Procédure d\'escalade — Staff uniquement\n\n### Quand escalader ?\n- Bug critique affectant plusieurs utilisateurs\n- Problème nécessitant une modification du code\n- Demande de fonctionnalité urgente d\'un client Enterprise\n\n### Comment escalader ?\n1. Ouvrir le ticket concerné\n2. Cliquer sur \"Escalader aux développeurs\"\n3. Choisir le projet cible\n4. Définir la priorité\n5. Ajouter un commentaire expliquant le contexte\n\n### Suivi\n- Vous recevrez une notification quand le dev change le statut\n- Un message automatique apparaît dans le ticket\n- Informer le client que le problème est pris en charge',
+       '## Escalation procedure — Staff only\n\n### When to escalate?\n- Critical bug affecting multiple users\n- Issue requiring code changes\n- Urgent feature request from Enterprise client\n\n### How to escalate?\n1. Open the relevant ticket\n2. Click "Escalate to developers"\n3. Choose target project\n4. Set priority\n5. Add a comment explaining context\n\n### Follow-up\n- You\'ll receive a notification when the dev changes status\n- An automatic message appears in the ticket\n- Inform the client that the issue is being handled',
+       'Guide interne pour gérer les escalades support → dev.', 'Internal guide for managing support → dev escalations.',
+       5, 0, 1, 1]
+    ];
+    articles.forEach(a => {
+      db.prepare(`INSERT INTO articles (title,slug,title_en,content,content_en,excerpt,excerpt_en,category_id,is_public,is_published,author_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(...a);
+    });
   } else {
     console.log('✅ Base de données chargée');
   }

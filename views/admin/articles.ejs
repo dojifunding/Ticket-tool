@@ -1,0 +1,245 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><%= t.articles_title %></h1>
+    <p class="page-subtitle"><%= articles.length %> <%= t.articles_count %></p>
+  </div>
+  <div class="header-btns">
+    <a href="/help" target="_blank" class="btn btn-ghost">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      <%= t.articles_view_public %>
+    </a>
+    <% if (aiConfigured) { %>
+      <button class="btn btn-ghost" onclick="openAIModal()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93L12 22"/><path d="M8 6a4 4 0 0 1 8 0"/><path d="M17 12.5c1.77.83 3 2.63 3 4.72A5.22 5.22 0 0 1 14.78 22H9.22A5.22 5.22 0 0 1 4 17.22c0-2.1 1.23-3.89 3-4.72"/></svg>
+        <%= t.articles_ai_generate %>
+      </button>
+    <% } %>
+    <a href="/admin/articles/new" class="btn btn-primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+      <%= t.articles_new %>
+    </a>
+  </div>
+</div>
+
+<% if (!aiConfigured) { %>
+  <div class="alert alert-info" style="margin-bottom:1.5rem">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    <%= t.articles_ai_not_configured %>
+  </div>
+<% } %>
+
+<div class="table-container">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th><%= t.articles_col_title %></th>
+        <th><%= t.articles_col_category %></th>
+        <th><%= t.articles_col_visibility %></th>
+        <th><%= t.articles_col_status %></th>
+        <th><%= t.articles_col_views %></th>
+        <th><%= t.articles_col_updated %></th>
+        <th><%= t.actions %></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% articles.forEach(article => { %>
+        <tr>
+          <td>
+            <div class="article-title-cell">
+              <strong><%= article.title %></strong>
+              <% if (article.title_en) { %><small class="text-muted"><%= article.title_en %></small><% } %>
+            </div>
+          </td>
+          <td>
+            <% if (article.category_name) { %>
+              <span><%= article.category_icon %> <%= article.category_name %></span>
+            <% } else { %>
+              <span class="text-muted">—</span>
+            <% } %>
+          </td>
+          <td>
+            <span class="badge <%= article.is_public ? 'badge-status-open' : 'badge-status-closed' %>">
+              <%= article.is_public ? t.articles_public : t.articles_private %>
+            </span>
+          </td>
+          <td>
+            <span class="badge <%= article.is_published ? 'badge-status-done' : 'badge-status-waiting' %>">
+              <%= article.is_published ? t.articles_published : t.articles_draft %>
+            </span>
+          </td>
+          <td><%= article.views %></td>
+          <td class="text-muted"><%= new Date(article.updated_at).toLocaleDateString(dateLocale) %></td>
+          <td>
+            <div class="action-btns">
+              <a href="/help/article/<%= article.slug %>" target="_blank" class="btn btn-xs btn-ghost" title="<%= t.articles_preview %>">👁️</a>
+              <a href="/admin/articles/<%= article.id %>/edit" class="btn btn-xs btn-ghost" title="<%= t.articles_edit %>">✏️</a>
+              <form method="POST" action="/admin/articles/<%= article.id %>/toggle-publish" style="display:inline">
+                <button type="submit" class="btn btn-xs btn-ghost" title="<%= article.is_published ? t.articles_unpublish : t.articles_publish %>">
+                  <%= article.is_published ? '📤' : '📥' %>
+                </button>
+              </form>
+              <form method="POST" action="/admin/articles/<%= article.id %>/delete" style="display:inline"
+                    onsubmit="return confirm('<%= t.articles_delete_confirm %>')">
+                <button type="submit" class="btn btn-xs btn-ghost" title="<%= t.delete_btn %>">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (articles.length === 0) { %>
+        <tr><td colspan="7" class="empty-table"><%= t.articles_empty %></td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<!-- AI Generate Modal -->
+<% if (aiConfigured) { %>
+<div class="modal-overlay" id="aiModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2>🤖 <%= t.articles_ai_modal_title %></h2>
+      <button class="modal-close" onclick="closeModal('aiModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="ai-tabs">
+        <button class="ai-tab active" onclick="switchAiTab('fromTitle')"><%= t.articles_ai_from_title %></button>
+        <button class="ai-tab" onclick="switchAiTab('fromContent')"><%= t.articles_ai_from_content %></button>
+      </div>
+
+      <div id="aiTabFromTitle" class="ai-tab-content active">
+        <div class="form-group">
+          <label><%= t.articles_ai_article_title %></label>
+          <input type="text" id="aiTitle" placeholder="<%= t.articles_ai_title_placeholder %>">
+        </div>
+        <div class="form-group">
+          <label><%= t.articles_ai_resources %></label>
+          <textarea id="aiResources" rows="6" placeholder="<%= t.articles_ai_resources_placeholder %>"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="aiGenerateFromTitle()" id="aiGenBtn1">
+          <span class="btn-text">🤖 <%= t.articles_ai_generate_btn %></span>
+          <span class="btn-loading" style="display:none"><%= t.loading %></span>
+        </button>
+      </div>
+
+      <div id="aiTabFromContent" class="ai-tab-content">
+        <div class="form-group">
+          <label><%= t.articles_ai_paste_content %></label>
+          <textarea id="aiContent" rows="10" placeholder="<%= t.articles_ai_paste_placeholder %>"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="aiGenerateFromContent()" id="aiGenBtn2">
+          <span class="btn-text">🤖 <%= t.articles_ai_analyze_btn %></span>
+          <span class="btn-loading" style="display:none"><%= t.loading %></span>
+        </button>
+      </div>
+
+      <div id="aiResult" class="ai-result" style="display:none">
+        <h3><%= t.articles_ai_result %></h3>
+        <div id="aiResultContent" class="ai-result-content"></div>
+        <div class="ai-result-actions">
+          <button class="btn btn-primary" onclick="aiUseResult()"><%= t.articles_ai_use %></button>
+          <button class="btn btn-ghost" onclick="document.getElementById('aiResult').style.display='none'"><%= t.cancel %></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<% } %>
+
+<script>
+function openAIModal() { document.getElementById('aiModal').classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function switchAiTab(tab) {
+  document.querySelectorAll('.ai-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.ai-tab-content').forEach(t => t.classList.remove('active'));
+  if (tab === 'fromTitle') {
+    document.querySelectorAll('.ai-tab')[0].classList.add('active');
+    document.getElementById('aiTabFromTitle').classList.add('active');
+  } else {
+    document.querySelectorAll('.ai-tab')[1].classList.add('active');
+    document.getElementById('aiTabFromContent').classList.add('active');
+  }
+}
+
+let aiGeneratedData = null;
+
+async function aiGenerateFromTitle() {
+  const title = document.getElementById('aiTitle').value.trim();
+  const resources = document.getElementById('aiResources').value.trim();
+  if (!title) return;
+
+  const btn = document.getElementById('aiGenBtn1');
+  btn.querySelector('.btn-text').style.display = 'none';
+  btn.querySelector('.btn-loading').style.display = 'inline';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/admin/articles/ai/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, resources })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      aiGeneratedData = [{ title, content: data.content, excerpt: '', category_suggestion: '' }];
+      document.getElementById('aiResultContent').innerHTML =
+        '<div class="ai-preview"><h4>' + title + '</h4><pre>' + data.content.substring(0, 500) + '...</pre></div>';
+      document.getElementById('aiResult').style.display = 'block';
+    } else {
+      alert('Error: ' + (data.error || 'Unknown'));
+    }
+  } catch (e) { alert('Error: ' + e.message); }
+
+  btn.querySelector('.btn-text').style.display = 'inline';
+  btn.querySelector('.btn-loading').style.display = 'none';
+  btn.disabled = false;
+}
+
+async function aiGenerateFromContent() {
+  const content = document.getElementById('aiContent').value.trim();
+  if (!content) return;
+
+  const btn = document.getElementById('aiGenBtn2');
+  btn.querySelector('.btn-text').style.display = 'none';
+  btn.querySelector('.btn-loading').style.display = 'inline';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/admin/articles/ai/generate-from-content', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    });
+    const data = await res.json();
+    if (data.ok && data.articles) {
+      aiGeneratedData = data.articles;
+      let html = '';
+      data.articles.forEach((a, i) => {
+        html += '<div class="ai-preview"><h4>' + (i+1) + '. ' + a.title + '</h4><pre>' + (a.content||'').substring(0, 300) + '...</pre></div>';
+      });
+      document.getElementById('aiResultContent').innerHTML = html;
+      document.getElementById('aiResult').style.display = 'block';
+    } else {
+      alert('Error: ' + (data.error || 'Unknown'));
+    }
+  } catch (e) { alert('Error: ' + e.message); }
+
+  btn.querySelector('.btn-text').style.display = 'inline';
+  btn.querySelector('.btn-loading').style.display = 'none';
+  btn.disabled = false;
+}
+
+function aiUseResult() {
+  if (!aiGeneratedData || !aiGeneratedData[0]) return;
+  const a = aiGeneratedData[0];
+  // Redirect to new article form with pre-filled data
+  sessionStorage.setItem('ai_article', JSON.stringify(a));
+  window.location.href = '/admin/articles/new';
+}
+
+// On modal overlay click
+document.getElementById('aiModal')?.addEventListener('click', function(e) { if (e.target === this) closeModal('aiModal'); });
+</script>
+
+<%- include('../partials/foot') %>

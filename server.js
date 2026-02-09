@@ -43,6 +43,8 @@ app.use('/', require('./routes/auth'));
 app.use('/projects', require('./routes/projects'));
 app.use('/tickets', require('./routes/tickets'));
 app.use('/admin', require('./routes/admin'));
+app.use('/admin/articles', require('./routes/articles'));
+app.use('/help', require('./routes/help'));
 app.use('/api', require('./routes/api'));
 
 // ─── Error page ──────────────────────────────────────

@@ -63,10 +63,15 @@
               <input type="checkbox" id="isInternal">
               <span><%= t.ticket_internal_note %></span>
             </label>
-            <button class="btn btn-primary btn-sm" onclick="sendMessage()">
-              <%= t.send %>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            </button>
+            <div class="msg-action-btns">
+              <button class="btn btn-ghost btn-sm ai-suggest-btn" onclick="aiSuggestReply()" id="aiSuggestBtn" title="<%= t.ticket_ai_suggest %>">
+                🤖 <%= t.ticket_ai_suggest %>
+              </button>
+              <button class="btn btn-primary btn-sm" onclick="sendMessage()">
+                <%= t.send %>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -168,6 +173,15 @@
         </form>
       </div>
     <% } %>
+
+    <!-- FAQ Quick Access -->
+    <div class="faq-quick-panel">
+      <h4>📚 <%= t.ticket_faq_title %></h4>
+      <div class="faq-search-mini">
+        <input type="text" id="faqSearch" placeholder="<%= t.ticket_faq_search %>" autocomplete="off">
+      </div>
+      <div class="faq-results" id="faqResults"></div>
+    </div>
   </div>
 </div>
 
@@ -199,6 +213,64 @@ if (typeof io !== 'undefined') {
   });
 }
 document.getElementById('messageInput').addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'Enter') sendMessage(); });
+
+// ─── AI Suggest Reply ────────────────────────────────
+async function aiSuggestReply() {
+  const btn = document.getElementById('aiSuggestBtn');
+  btn.disabled = true;
+  btn.textContent = '🤖 ...';
+  try {
+    const res = await fetch('/admin/articles/ai/suggest-reply', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticketId })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('messageInput').value = data.suggestion;
+      document.getElementById('messageInput').focus();
+    } else {
+      alert(data.error || 'AI not configured');
+    }
+  } catch (e) { alert('Error: ' + e.message); }
+  btn.disabled = false;
+  btn.textContent = '🤖 <%= t.ticket_ai_suggest %>';
+}
+
+// ─── FAQ Quick Search ────────────────────────────────
+let faqTimeout = null;
+document.getElementById('faqSearch').addEventListener('input', (e) => {
+  clearTimeout(faqTimeout);
+  const q = e.target.value.trim();
+  if (q.length < 2) { document.getElementById('faqResults').innerHTML = ''; return; }
+  faqTimeout = setTimeout(async () => {
+    try {
+      const res = await fetch('/help/api/search?q=' + encodeURIComponent(q));
+      const articles = await res.json();
+      const container = document.getElementById('faqResults');
+      if (articles.length === 0) {
+        container.innerHTML = '<p class="text-muted text-sm"><%= t.help_no_results %></p>';
+        return;
+      }
+      container.innerHTML = articles.map(a =>
+        '<div class="faq-result-item">' +
+          '<div class="faq-result-title">' + (a.title) + (!a.is_public ? ' 🔒' : '') + '</div>' +
+          '<div class="faq-result-excerpt">' + (a.excerpt || '') + '</div>' +
+          '<div class="faq-result-actions">' +
+            '<button class="btn btn-xs btn-ghost" onclick="insertFaqLink(\'' + a.slug + '\', \'' + a.title.replace(/'/g, "\\'") + '\')"><%= t.ticket_faq_insert %></button>' +
+            '<a href="/help/article/' + a.slug + '" target="_blank" class="btn btn-xs btn-ghost">👁️</a>' +
+          '</div>' +
+        '</div>'
+      ).join('');
+    } catch (e) { console.error(e); }
+  }, 300);
+});
+
+function insertFaqLink(slug, title) {
+  const input = document.getElementById('messageInput');
+  const link = '<%= t.ticket_faq_ref_prefix %> "' + title + '": ' + window.location.origin + '/help/article/' + slug;
+  input.value = input.value ? input.value + '\n\n' + link : link;
+  input.focus();
+}
 </script>
 
 <%- include('../partials/foot') %>

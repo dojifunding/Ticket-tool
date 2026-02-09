@@ -1,0 +1,146 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <a href="/admin/articles" class="back-link">← <%= t.articles_title %></a>
+    <h1 class="page-title"><%= article ? t.articles_edit : t.articles_new %></h1>
+  </div>
+</div>
+
+<div class="form-container form-container-wide">
+  <form method="POST" action="<%= article ? '/admin/articles/' + article.id + '/update' : '/admin/articles/new' %>" class="form-card">
+
+    <!-- FR Title + EN Title -->
+    <div class="form-row">
+      <div class="form-group form-group-lg">
+        <label>🇫🇷 <%= t.articles_form_title_fr %> *</label>
+        <input type="text" name="title" required placeholder="<%= t.articles_form_title_placeholder %>"
+               value="<%= article ? article.title : '' %>" id="articleTitleFr">
+      </div>
+      <div class="form-group form-group-lg">
+        <label>🇬🇧 <%= t.articles_form_title_en %></label>
+        <input type="text" name="title_en" placeholder="English title (optional)"
+               value="<%= article ? (article.title_en || '') : '' %>" id="articleTitleEn">
+      </div>
+    </div>
+
+    <!-- FR Excerpt + EN Excerpt -->
+    <div class="form-row">
+      <div class="form-group">
+        <label>🇫🇷 <%= t.articles_form_excerpt_fr %></label>
+        <input type="text" name="excerpt" placeholder="<%= t.articles_form_excerpt_placeholder %>"
+               value="<%= article ? (article.excerpt || '') : '' %>">
+      </div>
+      <div class="form-group">
+        <label>🇬🇧 <%= t.articles_form_excerpt_en %></label>
+        <input type="text" name="excerpt_en" placeholder="Short excerpt in English"
+               value="<%= article ? (article.excerpt_en || '') : '' %>">
+      </div>
+    </div>
+
+    <!-- FR Content -->
+    <div class="form-group">
+      <label>🇫🇷 <%= t.articles_form_content_fr %> * <span class="form-hint">(Markdown)</span></label>
+      <textarea name="content" rows="12" required placeholder="<%= t.articles_form_content_placeholder %>"
+                id="articleContentFr"><%= article ? article.content : '' %></textarea>
+    </div>
+
+    <!-- EN Content -->
+    <div class="form-group">
+      <label>🇬🇧 <%= t.articles_form_content_en %> <span class="form-hint">(Markdown)</span></label>
+      <textarea name="content_en" rows="8" placeholder="English content (optional)"
+                id="articleContentEn"><%= article ? (article.content_en || '') : '' %></textarea>
+    </div>
+
+    <!-- Category + Options -->
+    <div class="form-row">
+      <div class="form-group">
+        <label><%= t.label_category %></label>
+        <select name="category_id">
+          <option value="">— <%= t.articles_no_category %> —</option>
+          <% categories.forEach(c => { %>
+            <option value="<%= c.id %>" <%= article && article.category_id === c.id ? 'selected' : '' %>>
+              <%= c.icon %> <%= c.name %>
+            </option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="form-group">
+        <label><%= t.articles_col_visibility %></label>
+        <select name="is_public">
+          <option value="1" <%= !article || article.is_public ? 'selected' : '' %>><%= t.articles_public %> — <%= t.articles_public_desc %></option>
+          <option value="" <%= article && !article.is_public ? 'selected' : '' %>><%= t.articles_private %> — <%= t.articles_private_desc %></option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label><%= t.articles_col_status %></label>
+        <select name="is_published">
+          <option value="1" <%= !article || article.is_published ? 'selected' : '' %>><%= t.articles_published %></option>
+          <option value="" <%= article && !article.is_published ? 'selected' : '' %>><%= t.articles_draft %></option>
+        </select>
+      </div>
+    </div>
+
+    <% if (aiConfigured) { %>
+      <div class="ai-inline-tools">
+        <span class="ai-label">🤖 <%= t.articles_ai_tools %></span>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="aiGenerateContent()"><%= t.articles_ai_generate_content %></button>
+      </div>
+    <% } %>
+
+    <div class="form-actions">
+      <a href="/admin/articles" class="btn btn-ghost"><%= t.cancel %></a>
+      <button type="submit" class="btn btn-primary">
+        <%= article ? t.update : t.articles_create %>
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+// Auto-fill from AI sessionStorage
+window.addEventListener('DOMContentLoaded', () => {
+  const data = sessionStorage.getItem('ai_article');
+  if (data) {
+    sessionStorage.removeItem('ai_article');
+    try {
+      const a = JSON.parse(data);
+      if (a.title) document.getElementById('articleTitleFr').value = a.title;
+      if (a.content) document.getElementById('articleContentFr').value = a.content;
+      if (a.excerpt) document.querySelector('[name="excerpt"]').value = a.excerpt;
+    } catch(e) {}
+  }
+});
+
+<% if (aiConfigured) { %>
+async function aiGenerateContent() {
+  const title = document.getElementById('articleTitleFr').value.trim();
+  if (!title) { alert('<%= t.articles_ai_need_title %>'); return; }
+
+  const existing = document.getElementById('articleContentFr').value.trim();
+  const resources = existing || 'No additional resources. Generate based on the title.';
+
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '<%= t.loading %>';
+
+  try {
+    const res = await fetch('/admin/articles/ai/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, resources })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('articleContentFr').value = data.content;
+    } else {
+      alert('Error: ' + (data.error || 'Unknown'));
+    }
+  } catch (e) { alert('Error: ' + e.message); }
+
+  btn.disabled = false;
+  btn.textContent = '<%= t.articles_ai_generate_content %>';
+}
+<% } %>
+</script>
+
+<%- include('../partials/foot') %>

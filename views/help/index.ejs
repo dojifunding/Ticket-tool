@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="<%= t.lang %>">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= t.help_title %> — ProjectHub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/help.css">
+</head>
+<body class="help-body">
+  <nav class="help-nav">
+    <div class="help-nav-inner">
+      <a href="/help" class="help-logo">
+        <div class="logo-icon">P</div>
+        <span><%= t.help_title %></span>
+      </a>
+      <div class="help-nav-actions">
+        <div class="lang-toggle">
+          <a href="/lang/fr" class="lang-btn <%= t.lang === 'fr' ? 'active' : '' %>">FR</a>
+          <a href="/lang/en" class="lang-btn <%= t.lang === 'en' ? 'active' : '' %>">EN</a>
+        </div>
+        <% if (user) { %>
+          <a href="/" class="btn btn-ghost btn-sm"><%= t.help_back_app %></a>
+        <% } else { %>
+          <a href="/login" class="btn btn-ghost btn-sm"><%= t.login_submit %></a>
+        <% } %>
+      </div>
+    </div>
+  </nav>
+
+  <header class="help-hero">
+    <h1><%= t.help_hero_title %></h1>
+    <p><%= t.help_hero_subtitle %></p>
+    <form action="/help/search" method="GET" class="help-search-form">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" name="q" placeholder="<%= t.help_search_placeholder %>" autofocus autocomplete="off">
+      <button type="submit" class="btn btn-primary"><%= t.help_search_btn %></button>
+    </form>
+  </header>
+
+  <main class="help-main">
+    <!-- Categories -->
+    <section class="help-categories">
+      <% categories.forEach(cat => { %>
+        <a href="/help/category/<%= cat.slug %>" class="help-category-card">
+          <div class="help-cat-icon"><%= cat.icon %></div>
+          <h3><%= cat.displayName %></h3>
+          <span class="help-cat-count"><%= cat.article_count %> <%= t.help_articles %></span>
+        </a>
+      <% }) %>
+    </section>
+
+    <!-- Popular Articles -->
+    <% if (popular.length > 0) { %>
+      <section class="help-popular">
+        <h2><%= t.help_popular %></h2>
+        <div class="help-article-grid">
+          <% popular.forEach(article => { %>
+            <a href="/help/article/<%= article.slug %>" class="help-article-card">
+              <span class="help-article-cat"><%= article.displayCategory %></span>
+              <h3><%= article.displayTitle %></h3>
+              <p><%= article.displayExcerpt || '' %></p>
+              <% if (!article.is_public) { %><span class="help-private-badge">🔒 <%= t.help_staff_only %></span><% } %>
+            </a>
+          <% }) %>
+        </div>
+      </section>
+    <% } %>
+
+    <!-- Contact CTA -->
+    <section class="help-contact">
+      <h2><%= t.help_contact_title %></h2>
+      <p><%= t.help_contact_text %></p>
+      <a href="/login" class="btn btn-primary"><%= t.help_contact_btn %></a>
+    </section>
+  </main>
+
+  <footer class="help-footer">
+    <p>© <%= new Date().getFullYear() %> ProjectHub — <%= t.help_footer %></p>
+  </footer>
+</body>
+</html>
