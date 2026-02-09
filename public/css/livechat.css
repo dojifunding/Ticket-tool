@@ -380,3 +380,20 @@
   font-size: 0.78rem !important;
   border-radius: 6px !important;
 }
+
+/* ─── Markdown rendering in chat bubbles ──────────── */
+.lc-msg-bubble ul {
+  margin: 4px 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+.lc-msg-bubble ul li {
+  margin: 2px 0;
+  line-height: 1.4;
+}
+.lc-msg-bubble strong {
+  font-weight: 600;
+}
+.lc-msg-bubble em {
+  font-style: italic;
+}

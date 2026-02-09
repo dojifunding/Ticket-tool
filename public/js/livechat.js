@@ -262,9 +262,12 @@
     const label = isVisitor ? t('youLabel') : (msg.sender_type === 'ai' ? '🤖' : '🧑 ' + (msg.sender_name || 'Agent'));
     const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString(state.lang, { hour: '2-digit', minute: '2-digit' }) : '';
 
+    // AI messages: render markdown. Visitor messages: escape only.
+    const rendered = isVisitor ? escapeHtml(msg.content) : renderMd(msg.content);
+
     div.innerHTML = `
       <div class="lc-msg-label">${label}</div>
-      <div class="lc-msg-bubble">${escapeHtml(msg.content)}</div>
+      <div class="lc-msg-bubble">${rendered}</div>
       <div class="lc-msg-time">${time}</div>
     `;
     container.appendChild(div);
@@ -281,6 +284,42 @@
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML.replace(/\n/g, '<br>');
+  }
+
+  // Simple Markdown → HTML for chat bubbles
+  function renderMd(text) {
+    // Escape HTML first
+    const div = document.createElement('div');
+    div.textContent = text;
+    let html = div.innerHTML;
+
+    // Bold: **text** or __text__
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+
+    // Italic: *text* or _text_
+    html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+
+    // Bullet lists: lines starting with - or •
+    html = html.replace(/^[\-•]\s+(.+)$/gm, '<li>$1</li>');
+    html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+
+    // Numbered lists: lines starting with 1. 2. etc
+    html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
+
+    // Headers: ### → bold, ## → bold, # → bold
+    html = html.replace(/^#{1,3}\s+(.+)$/gm, '<strong>$1</strong>');
+
+    // Line breaks
+    html = html.replace(/\n/g, '<br>');
+
+    // Clean up: remove <br> inside/around lists
+    html = html.replace(/<br>\s*<ul>/g, '<ul>');
+    html = html.replace(/<\/ul>\s*<br>/g, '</ul>');
+    html = html.replace(/<br>\s*<li>/g, '<li>');
+    html = html.replace(/<\/li>\s*<br>/g, '</li>');
+
+    return html;
   }
 
   // ─── Send Message ──────────────────────────────────
