@@ -2227,3 +2227,17 @@ input, select, textarea, button {
 .kb-select-all:hover, .kb-select-item:hover { background: var(--bg-tertiary); }
 .kb-select-all { border-bottom: 1px solid var(--border); margin-bottom: 0.25rem; padding-bottom: 0.5rem; }
 .kb-select-item input, .kb-select-all input { accent-color: var(--primary); }
+
+/* ─── AI Generated Article Cards ──────────────────── */
+.ai-result-content { max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; padding-right: 0.25rem; }
+.ai-article-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem 1rem; background: var(--bg-tertiary); }
+.ai-article-header { display: flex; align-items: flex-start; gap: 0.75rem; }
+.ai-article-check { flex-shrink: 0; padding-top: 6px; }
+.ai-article-check input { accent-color: var(--primary); width: 16px; height: 16px; }
+.ai-article-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.ai-article-title-input { width: 100%; padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card); color: var(--text-primary); font-weight: 600; font-size: 0.95rem; }
+.ai-article-title-input:focus { border-color: var(--primary); outline: none; }
+.ai-article-meta { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.ai-cat-select { padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card); color: var(--text-primary); font-size: 0.85rem; max-width: 200px; }
+.ai-article-excerpt { font-size: 0.85rem; color: var(--text-secondary); margin: 0.4rem 0 0; }
+.ai-article-preview { font-size: 0.8rem; color: var(--text-secondary); white-space: pre-wrap; max-height: 150px; overflow-y: auto; background: var(--bg-card); padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; }

@@ -169,16 +169,30 @@
       </div>
 
       <div id="aiResult" class="ai-result" style="display:none">
-        <h3><%= t.articles_ai_result %></h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
+          <h3 style="margin:0"><%= t.articles_ai_result %> — <span id="aiResultCount">0</span> articles</h3>
+          <label style="font-size:0.85rem;cursor:pointer;display:flex;align-items:center;gap:0.4rem">
+            <input type="checkbox" id="aiSelectAll" checked onchange="toggleAllAiArticles()"> Tout sélectionner
+          </label>
+        </div>
         <div id="aiResultContent" class="ai-result-content"></div>
         <div class="ai-result-actions">
-          <button class="btn btn-primary" onclick="aiUseResult()"><%= t.articles_ai_use %></button>
+          <button class="btn btn-primary" onclick="bulkPublish()" id="bulkPublishBtn">
+            <span class="btn-text">✅ Publier les articles sélectionnés</span>
+            <span class="btn-loading" style="display:none"><%= t.loading %></span>
+          </button>
+          <button class="btn btn-ghost" onclick="aiUseSingle()">📝 Modifier le 1er dans l'éditeur</button>
           <button class="btn btn-ghost" onclick="document.getElementById('aiResult').style.display='none'"><%= t.cancel %></button>
         </div>
       </div>
     </div>
   </div>
 </div>
+
+<!-- Categories data for JS -->
+<script>
+const CATEGORIES = <%- JSON.stringify((categories || []).map(c => ({ id: c.id, name: c.name, slug: c.slug }))) %>;
+</script>
 <% } %>
 
 <script>
@@ -196,7 +210,7 @@ function switchAiTab(tab) {
 
 let aiGeneratedData = null;
 
-// ─── Async Job Polling (bypasses Render 30s HTTP timeout) ───
+// ─── Async Job Polling ───
 function pollJob(jobId, interval = 2000, maxTime = 120000) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
@@ -207,7 +221,7 @@ function pollJob(jobId, interval = 2000, maxTime = 120000) {
         if (job.status === 'done') return resolve(job.result);
         if (job.status === 'error') return reject(new Error(job.error || 'Erreur IA'));
         if (job.status === 'not_found') return reject(new Error('Job introuvable'));
-        if (Date.now() - start > maxTime) return reject(new Error('Timeout: la génération prend trop de temps'));
+        if (Date.now() - start > maxTime) return reject(new Error('Timeout'));
         setTimeout(check, interval);
       } catch (e) { reject(e); }
     };
@@ -221,47 +235,120 @@ function setBtn(btn, loading) {
   btn.disabled = loading;
 }
 
+// ─── Build category <select> HTML ───
+function catSelect(suggested, idx) {
+  let html = '<select class="ai-cat-select" data-idx="' + idx + '">';
+  html += '<option value="">— Sans catégorie —</option>';
+  CATEGORIES.forEach(c => {
+    const sel = (suggested && (c.slug === suggested || c.name.toLowerCase() === (suggested||'').toLowerCase())) ? ' selected' : '';
+    html += '<option value="' + c.id + '"' + sel + '>' + c.name + '</option>';
+  });
+  html += '</select>';
+  return html;
+}
+
+// ─── Show All Generated Articles ───
 function showArticles(articles) {
   aiGeneratedData = articles;
+  document.getElementById('aiResultCount').textContent = articles.length;
+
   let html = '';
   articles.forEach((a, i) => {
-    html += '<div class="ai-preview"><h4>' + (i+1) + '. ' + (a.title || 'Article') + '</h4>';
-    if (a.category_suggestion) html += '<span class="badge badge-info">' + a.category_suggestion + '</span>';
-    html += '<pre>' + (a.content || '').substring(0, 400) + '...</pre></div>';
+    html += '<div class="ai-article-card">';
+    html += '<div class="ai-article-header">';
+    html += '<label class="ai-article-check"><input type="checkbox" checked data-idx="' + i + '" class="ai-publish-cb"></label>';
+    html += '<div class="ai-article-info">';
+    html += '<input type="text" class="ai-article-title-input" data-idx="' + i + '" value="' + (a.title || '').replace(/"/g, '&quot;') + '">';
+    html += '<div class="ai-article-meta">' + catSelect(a.category_suggestion, i);
+    html += '<span class="text-muted" style="font-size:0.8rem">' + ((a.content||'').length) + ' chars</span></div>';
+    html += '</div></div>';
+    if (a.excerpt) html += '<p class="ai-article-excerpt">' + a.excerpt + '</p>';
+    html += '<details><summary style="font-size:0.85rem;color:var(--primary);cursor:pointer">Aperçu du contenu</summary>';
+    html += '<pre class="ai-article-preview">' + (a.content||'').substring(0, 500) + (a.content && a.content.length > 500 ? '...' : '') + '</pre>';
+    html += '</details></div>';
   });
+
   document.getElementById('aiResultContent').innerHTML = html;
   document.getElementById('aiResult').style.display = 'block';
 }
 
-async function aiGenerateFromTitle() {
-  const title = document.getElementById('aiTitle').value.trim();
-  const resources = document.getElementById('aiResources').value.trim();
-  if (!title) return;
+function toggleAllAiArticles() {
+  const checked = document.getElementById('aiSelectAll').checked;
+  document.querySelectorAll('.ai-publish-cb').forEach(cb => cb.checked = checked);
+}
 
-  const btn = document.getElementById('aiGenBtn1');
+// ─── Bulk Publish ───
+async function bulkPublish() {
+  if (!aiGeneratedData) return;
+  const btn = document.getElementById('bulkPublishBtn');
   setBtn(btn, true);
 
+  const articles = [];
+  document.querySelectorAll('.ai-publish-cb').forEach(cb => {
+    const idx = parseInt(cb.dataset.idx);
+    const a = aiGeneratedData[idx];
+    if (!a) return;
+    const titleInput = document.querySelector('.ai-article-title-input[data-idx="' + idx + '"]');
+    const catSelect = document.querySelector('.ai-cat-select[data-idx="' + idx + '"]');
+    articles.push({
+      publish: cb.checked,
+      title: titleInput ? titleInput.value : a.title,
+      content: a.content,
+      excerpt: a.excerpt || '',
+      category_id: catSelect ? (catSelect.value || null) : null
+    });
+  });
+
+  const selected = articles.filter(a => a.publish);
+  if (!selected.length) { alert('Sélectionnez au moins un article.'); setBtn(btn, false); return; }
+
+  try {
+    const res = await fetch('/admin/articles/ai/bulk-publish', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ articles })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      alert('✅ ' + data.published + ' article(s) publié(s) !');
+      location.reload();
+    } else { alert('Erreur: ' + (data.error || 'Inconnue')); }
+  } catch (e) { alert('Erreur: ' + e.message); }
+
+  setBtn(btn, false);
+}
+
+// ─── Use single article in editor ───
+function aiUseSingle() {
+  if (!aiGeneratedData || !aiGeneratedData[0]) return;
+  const a = aiGeneratedData[0];
+  sessionStorage.setItem('ai_article', JSON.stringify(a));
+  window.location.href = '/admin/articles/new';
+}
+
+// ─── AI Generation Functions ───
+async function aiGenerateFromTitle() {
+  const title = document.getElementById('aiTitle').value.trim();
+  if (!title) return;
+  const btn = document.getElementById('aiGenBtn1');
+  setBtn(btn, true);
   try {
     const res = await fetch('/admin/articles/ai/generate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, resources })
+      body: JSON.stringify({ title, resources: document.getElementById('aiResources').value.trim() })
     });
     const data = await res.json();
     if (!data.ok || !data.jobId) throw new Error(data.error || 'Erreur');
     const result = await pollJob(data.jobId);
     showArticles(result.articles || []);
   } catch (e) { alert('❌ ' + e.message); }
-
   setBtn(btn, false);
 }
 
 async function aiGenerateFromContent() {
   const content = document.getElementById('aiContent').value.trim();
   if (!content) return;
-
   const btn = document.getElementById('aiGenBtn2');
   setBtn(btn, true);
-
   try {
     const res = await fetch('/admin/articles/ai/generate-from-content', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -272,18 +359,15 @@ async function aiGenerateFromContent() {
     const result = await pollJob(data.jobId);
     showArticles(result.articles || []);
   } catch (e) { alert('❌ ' + e.message); }
-
   setBtn(btn, false);
 }
 
 async function aiGenerateFromKB() {
   const checks = document.querySelectorAll('input[name="kbIds"]:checked');
   if (!checks.length) return alert('Sélectionnez au moins une entrée de la base de connaissances.');
-
   const kbIds = Array.from(checks).map(cb => parseInt(cb.value));
   const btn = document.getElementById('aiGenBtn3');
   setBtn(btn, true);
-
   try {
     const res = await fetch('/admin/articles/ai/generate-from-kb', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -294,15 +378,7 @@ async function aiGenerateFromKB() {
     const result = await pollJob(data.jobId);
     showArticles(result.articles || []);
   } catch (e) { alert('❌ ' + e.message); }
-
   setBtn(btn, false);
-}
-
-function aiUseResult() {
-  if (!aiGeneratedData || !aiGeneratedData[0]) return;
-  const a = aiGeneratedData[0];
-  sessionStorage.setItem('ai_article', JSON.stringify(a));
-  window.location.href = '/admin/articles/new';
 }
 
 // On modal overlay click

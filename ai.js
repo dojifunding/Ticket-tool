@@ -315,42 +315,72 @@ async function analyzeImage(base64Data, mimeType, instruction) {
 }
 
 // ─── Generate Article from Knowledge Base ────────────
-async function generateFromKB(kbEntries, lang = 'fr') {
+async function generateFromKB(kbEntries, lang = 'fr', categoryList = '') {
   const langLabel = lang === 'en' ? 'English' : 'French';
-  const systemPrompt = `You are a professional help center article writer. Create clear, helpful FAQ articles from knowledge base entries.
 
-Rules:
-- Write in ${langLabel}
-- Return a JSON array of articles: [{ "title": "...", "excerpt": "...", "content": "...", "category_suggestion": "..." }]
-- Content in Markdown format with ## headings
-- Extract key topics and organize into distinct articles (3-8 articles max)
-- Each article should answer a specific question or cover a specific topic
-- Suggest category from: getting-started, account, billing, features, troubleshooting, integrations, rules, trading
-- Make articles customer-friendly — avoid internal jargon
-- Return ONLY valid JSON, no other text`;
-
-  // Cap total KB text at 12K to stay within timeout
-  let kbText = '';
-  const maxTotal = 12000;
-  for (const k of kbEntries) {
-    const maxPerEntry = Math.min(Math.floor(maxTotal / kbEntries.length), 6000);
-    const entry = `[${k.title}]:\n${k.content.substring(0, maxPerEntry)}\n\n---\n\n`;
-    if (kbText.length + entry.length > maxTotal) {
-      kbText += `[${k.title}]:\n${k.content.substring(0, maxTotal - kbText.length - 50)}\n...(truncated)\n`;
-      break;
+  // Pre-split large KB entries into numbered sections
+  const sections = [];
+  for (const kb of kbEntries) {
+    if (kb.content.length < 800) {
+      sections.push({ source: kb.title, text: kb.content });
+      continue;
     }
-    kbText += entry;
+    // Split on numbered headings: "1. ", "20. ", "## ", etc.
+    const parts = kb.content.split(/\n(?=\d{1,2}\.\s+[A-Z0-9★◆■])|(?=\n#{1,3}\s)/g).filter(s => s.trim().length > 30);
+    if (parts.length <= 1) {
+      sections.push({ source: kb.title, text: kb.content.substring(0, 6000) });
+    } else {
+      parts.forEach(p => sections.push({ source: kb.title, text: p.trim() }));
+    }
   }
 
-  const userMsg = `Generate help center articles from these knowledge base entries:\n\n${kbText}`;
+  // Build context: each section as a numbered block, capped at 14K
+  let kbText = '';
+  const maxTotal = 14000;
+  sections.forEach((s, i) => {
+    const block = `--- SECTION ${i + 1} (from "${s.source}") ---\n${s.text}\n\n`;
+    if (kbText.length + block.length <= maxTotal) kbText += block;
+  });
 
-  const result = await callClaude(systemPrompt, userMsg, 4000);
+  const cats = categoryList || 'getting-started, account, billing, features, troubleshooting, integrations, rules, trading';
+
+  const systemPrompt = `You are a FAQ article generator for a customer help center. Your CRITICAL job is to split knowledge base content into MULTIPLE SEPARATE FAQ articles.
+
+ABSOLUTE RULES:
+1. Generate MULTIPLE articles (5-15 articles). NEVER generate just 1 article.
+2. Each article must focus on ONE specific topic or question a customer would ask.
+3. Article titles must be written as customer questions or clear topic names. Examples:
+   - "Comment fonctionne le compte 25K Static ?"
+   - "Quels sont les frais d'activation ?"
+   - "Règles de drawdown et perte maximale"
+4. Each article is SHORT: 150-400 words max. NOT a full dump of the source material.
+5. Assign each article to a category from: ${cats}
+6. Write in ${langLabel}
+7. Use Markdown: ## for sub-headings, **bold** for key info, bullet lists for rules/steps
+8. Add a short excerpt (1 sentence summary) for each article
+9. Return ONLY a valid JSON array, no other text:
+[
+  { "title": "...", "excerpt": "...", "content": "...", "category_suggestion": "slug-here" },
+  { "title": "...", "excerpt": "...", "content": "...", "category_suggestion": "slug-here" }
+]
+
+THINK: What would a customer search for? Each answer = 1 article. Split by topic, not by section number.`;
+
+  const userMsg = `Split this knowledge base content into MULTIPLE FAQ articles (at least 5):\n\n${kbText}`;
+
+  const result = await callClaude(systemPrompt, userMsg, 4096);
   try {
     const clean = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    return JSON.parse(clean);
+    const articles = JSON.parse(clean);
+    // Validate: must be array with multiple items
+    if (!Array.isArray(articles) || articles.length === 0) {
+      throw new Error('Not an array');
+    }
+    return articles;
   } catch (e) {
     console.error('[AI] Failed to parse KB article generation:', e.message);
-    return [{ title: 'Generated Article', excerpt: '', content: result, category_suggestion: 'general' }];
+    // Try to salvage by splitting the single result
+    return [{ title: 'Generated Article', excerpt: '', content: result.substring(0, 2000), category_suggestion: 'general' }];
   }
 }
 

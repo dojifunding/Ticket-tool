@@ -153,6 +153,31 @@ router.post('/:id/toggle-publish', (req, res) => {
   res.redirect('/admin/articles');
 });
 
+// ─── Bulk Publish AI-Generated Articles ──────────────
+router.post('/ai/bulk-publish', (req, res) => {
+  const db = getDb();
+  const { articles } = req.body; // [{ title, content, excerpt, category_id, publish }]
+  if (!articles || !Array.isArray(articles)) return res.status(400).json({ error: 'Invalid data' });
+
+  let published = 0;
+  for (const a of articles) {
+    if (!a.publish || !a.title || !a.content) continue;
+    const slug = a.title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').substring(0, 80);
+    // Ensure unique slug
+    const existing = db.prepare('SELECT id FROM articles WHERE slug=?').get(slug);
+    const finalSlug = existing ? slug + '-' + Date.now().toString(36) : slug;
+
+    db.prepare(`INSERT INTO articles (title, slug, excerpt, content, category_id, is_published, is_public, author_id)
+      VALUES (?, ?, ?, ?, ?, 1, 1, ?)`).run(
+      a.title, finalSlug, a.excerpt || '', a.content, a.category_id || null, req.session.user.id
+    );
+    published++;
+  }
+
+  res.json({ ok: true, published });
+});
+
 // ═══════════════════════════════════════════════════════
 //  AI ENDPOINTS
 // ═══════════════════════════════════════════════════════
@@ -289,8 +314,12 @@ router.post('/ai/generate-from-kb', async (req, res) => {
 
   if (!kbEntries.length) return res.status(400).json({ error: 'No KB entries found' });
 
+  // Get real categories from DB so AI uses them
+  const categories = db.prepare('SELECT slug, name, name_en FROM article_categories ORDER BY position').all();
+  const catList = categories.map(c => `${c.slug} (${lang === 'fr' ? c.name : (c.name_en || c.name)})`).join(', ');
+
   const jobId = createJob(async () => {
-    const articles = await ai.generateFromKB(kbEntries, lang);
+    const articles = await ai.generateFromKB(kbEntries, lang, catList);
     return { articles };
   });
   res.json({ ok: true, jobId });
