@@ -35,7 +35,24 @@ async function callClaude(systemPrompt, userMessage, maxTokens = 2000) {
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`Claude API error ${response.status}: ${err}`);
+    // Parse API error for user-friendly messages
+    try {
+      const errData = JSON.parse(err);
+      const msg = errData?.error?.message || err;
+      if (msg.includes('credit balance') || msg.includes('billing')) {
+        throw new Error('BILLING: Crédit API Anthropic insuffisant. Rechargez vos crédits sur console.anthropic.com → Plans & Billing.');
+      }
+      if (msg.includes('authentication') || msg.includes('api_key')) {
+        throw new Error('AUTH: Clé API Anthropic invalide. Vérifiez ANTHROPIC_API_KEY dans les variables d\'environnement.');
+      }
+      if (msg.includes('rate_limit') || response.status === 429) {
+        throw new Error('RATE_LIMIT: Trop de requêtes. Réessayez dans quelques secondes.');
+      }
+      throw new Error(msg);
+    } catch (parseErr) {
+      if (parseErr.message.startsWith('BILLING:') || parseErr.message.startsWith('AUTH:') || parseErr.message.startsWith('RATE_LIMIT:')) throw parseErr;
+      throw new Error(`Claude API error ${response.status}: ${err.substring(0, 200)}`);
+    }
   }
 
   const data = await response.json();

@@ -195,14 +195,53 @@ router.get('/messages/:token', (req, res) => {
   res.json({ ok: true, messages, status: session.status });
 });
 
-// ─── Close Chat ──────────────────────────────────────
+// ─── Close Chat (visitor-initiated) ──────────────────
 router.post('/close', (req, res) => {
   const db = getDb();
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'Missing token' });
 
+  const session = db.prepare('SELECT * FROM chat_sessions WHERE visitor_token = ?').get(token);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+
+  // Close chat session
   db.prepare('UPDATE chat_sessions SET status=?, updated_at=CURRENT_TIMESTAMP WHERE visitor_token=?')
     .run('closed', token);
+
+  // Add closing system message
+  const lang = req.session?.lang || 'fr';
+  const t = getTranslations(lang);
+  db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
+    .run(session.id, 'ai', 'System', t.chat_closed_by_visitor);
+
+  // If linked to a ticket, close the ticket too
+  if (session.ticket_id) {
+    db.prepare("UPDATE tickets SET status='closed', resolved_at=COALESCE(resolved_at, CURRENT_TIMESTAMP), updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .run(session.ticket_id);
+
+    // Add internal note in ticket
+    db.prepare('INSERT INTO ticket_messages (ticket_id, user_id, content, is_internal) VALUES (?,4,?,1)')
+      .run(session.ticket_id, '💬 ' + t.chat_visitor_ended);
+
+    // Notify support via Socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.to('role-support').emit('ticket:updated', { ticketId: session.ticket_id });
+      io.to('role-support').emit('ticket:newMessage', {
+        ticketId: session.ticket_id,
+        message: { full_name: 'System', avatar_color: '#94a3b8', role: 'system', content: '💬 ' + t.chat_visitor_ended, is_internal: 1 }
+      });
+    }
+
+    // Notify assigned agent
+    const ticket = db.prepare('SELECT * FROM tickets WHERE id=?').get(session.ticket_id);
+    if (ticket?.assigned_to) {
+      createNotification(ticket.assigned_to, 'livechat', '💬 Chat terminé',
+        (session.visitor_name || 'Visiteur') + ' a terminé la conversation',
+        '/tickets/' + session.ticket_id);
+      if (io) io.to('user-' + ticket.assigned_to).emit('notification:new');
+    }
+  }
 
   res.json({ ok: true });
 });

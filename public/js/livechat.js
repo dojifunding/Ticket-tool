@@ -195,13 +195,13 @@
         state.session = data.session;
         state.messages = data.messages || [];
         state.mode = data.session.status;
-        if (state.mode !== 'closed') {
+        if (state.mode === 'closed') {
+          // Show conversation history with new chat option
+          showChatUI();
+          showClosedState(null); // null = use default message, don't add duplicate
+        } else {
           showChatUI();
           connectSocket();
-        } else {
-          // Clear old closed session
-          localStorage.removeItem(STORAGE_KEY);
-          state.token = null;
         }
       } else {
         localStorage.removeItem(STORAGE_KEY);
@@ -377,6 +377,11 @@
         badge.textContent = parseInt(badge.textContent || '0') + 1;
       }
     });
+
+    // Agent closed the conversation
+    state.socket.on('livechat:closed', (data) => {
+      showClosedState(data.message);
+    });
   }
 
   // ─── Polling (fallback / human mode) ───────────────
@@ -411,36 +416,92 @@
             badge.textContent = parseInt(badge.textContent || '0') + 1;
           }
         }
-        if (data.status === 'closed') {
-          state.mode = 'closed';
+        if (data.status === 'closed' && state.mode !== 'closed') {
+          showClosedState(t('closed'));
           clearInterval(state.polling);
+          state.polling = null;
         }
       } catch (e) {}
     }, 3000);
   }
 
+  // ─── Show Closed State ──────────────────────────────
+  function showClosedState(message) {
+    state.mode = 'closed';
+    if (state.polling) { clearInterval(state.polling); state.polling = null; }
+
+    // Add system message (only if message is provided — avoids duplicate on resume)
+    if (message) {
+      const sysMsg = { sender_type: 'ai', sender_name: 'System', content: message, created_at: new Date().toISOString() };
+      state.messages.push(sysMsg);
+      appendMessageDOM(sysMsg);
+      scrollToBottom();
+    }
+
+    // Hide input, show new conversation button
+    document.getElementById('lc-footer').innerHTML = `
+      <div style="text-align:center; padding: 12px;">
+        <p style="font-size:0.8rem; color:var(--lc-text-muted, #64748b); margin-bottom:10px;">${t('closed')}</p>
+        <button class="lc-btn-primary" onclick="window._lcNewChat()" style="max-width:240px; margin:0 auto;">${t('newChat')}</button>
+      </div>
+    `;
+    document.getElementById('lc-status').textContent = t('closed');
+  }
+
+  // Expose for inline onclick
+  window._lcNewChat = function() {
+    localStorage.removeItem(STORAGE_KEY);
+    state.token = null;
+    state.messages = [];
+    state.mode = 'ai';
+    state.session = null;
+    if (state.socket) { state.socket.disconnect(); state.socket = null; }
+    if (state.polling) { clearInterval(state.polling); state.polling = null; }
+
+    // Reset UI fully
+    document.getElementById('lc-intro').style.display = 'flex';
+    document.getElementById('lc-messages').style.display = 'none';
+    document.getElementById('lc-footer').style.display = 'none';
+    document.getElementById('lc-footer').innerHTML = `
+      <div id="lc-escalate-bar" style="display:none">
+        <button id="lc-human-btn" class="lc-btn-outline">${t('humanBtn')}</button>
+      </div>
+      <div class="lc-input-row">
+        <input type="text" id="lc-input" placeholder="${t('placeholder')}" autocomplete="off">
+        <button id="lc-send" class="lc-btn-send" disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+      <div class="lc-powered">${t('powered')}</div>
+    `;
+    document.getElementById('lc-status').textContent = t('subtitle');
+    document.getElementById('lc-messages').innerHTML = '';
+    document.getElementById('lc-name').value = '';
+    document.getElementById('lc-email').value = '';
+
+    // Re-bind events
+    document.getElementById('lc-human-btn')?.addEventListener('click', escalateToHuman);
+    document.getElementById('lc-send')?.addEventListener('click', sendMessage);
+    document.getElementById('lc-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+    document.getElementById('lc-input')?.addEventListener('input', () => {
+      document.getElementById('lc-send').disabled = !document.getElementById('lc-input').value.trim();
+    });
+  };
+
   // ─── Close Chat ────────────────────────────────────
   function closeChat() {
-    if (state.token && confirm(state.lang === 'fr' ? 'Fermer cette conversation ?' : 'Close this conversation?')) {
-      fetch('/api/chat/close', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: state.token })
-      });
-      localStorage.removeItem(STORAGE_KEY);
-      state.token = null;
-      state.messages = [];
-      state.mode = 'ai';
-      if (state.socket) { state.socket.disconnect(); state.socket = null; }
-      if (state.polling) { clearInterval(state.polling); state.polling = null; }
-
-      // Reset UI
-      document.getElementById('lc-intro').style.display = 'flex';
-      document.getElementById('lc-messages').style.display = 'none';
-      document.getElementById('lc-footer').style.display = 'none';
-      document.getElementById('lc-window').classList.add('lc-hidden');
-      state.open = false;
-    } else if (!state.token) {
+    if (state.token && state.mode !== 'closed') {
+      const msg = state.lang === 'fr' ? 'Terminer cette conversation ?' : 'End this conversation?';
+      if (confirm(msg)) {
+        fetch('/api/chat/close', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: state.token })
+        });
+        showClosedState(t('closed'));
+      }
+    } else if (state.mode === 'closed' || !state.token) {
+      // Just minimize
       document.getElementById('lc-window').classList.add('lc-hidden');
       state.open = false;
     }

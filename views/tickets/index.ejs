@@ -26,8 +26,8 @@
     <div class="stat-label"><%= t.tickets_stat_waiting %></div>
   </div>
   <div class="stat-card stat-resolved">
-    <div class="stat-value"><%= stats.resolved %></div>
-    <div class="stat-label"><%= t.tickets_stat_resolved %></div>
+    <div class="stat-value"><%= stats.archived %></div>
+    <div class="stat-label"><%= t.tickets_stat_archived %></div>
   </div>
 </div>
 
@@ -39,8 +39,7 @@
       <option value="open" <%= filters.status === 'open' ? 'selected' : '' %>><%= t.tstatus_open %></option>
       <option value="in_progress" <%= filters.status === 'in_progress' ? 'selected' : '' %>><%= t.tstatus_in_progress %></option>
       <option value="waiting" <%= filters.status === 'waiting' ? 'selected' : '' %>><%= t.tstatus_waiting %></option>
-      <option value="resolved" <%= filters.status === 'resolved' ? 'selected' : '' %>><%= t.tstatus_resolved %></option>
-      <option value="closed" <%= filters.status === 'closed' ? 'selected' : '' %>><%= t.tstatus_closed %></option>
+      <option value="archived" <%= filters.status === 'archived' ? 'selected' : '' %>>📦 <%= t.tickets_filter_archived %></option>
     </select>
     <select name="priority" onchange="this.form.submit()">
       <option value="all"><%= t.tickets_filter_all_priority %></option>

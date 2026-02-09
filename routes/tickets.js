@@ -19,7 +19,13 @@ router.get('/', (req, res) => {
   `;
   const params = [];
 
-  if (status && status !== 'all') { sql += ' AND t.status = ?'; params.push(status); }
+  // By default, hide resolved/closed (archived) tickets
+  if (status === 'resolved') { sql += ' AND t.status = ?'; params.push('resolved'); }
+  else if (status === 'closed') { sql += ' AND t.status = ?'; params.push('closed'); }
+  else if (status === 'archived') { sql += ' AND t.status IN (?, ?)'; params.push('resolved', 'closed'); }
+  else if (status && status !== 'all') { sql += ' AND t.status = ?'; params.push(status); }
+  else if (!status || status === 'all') { sql += ' AND t.status NOT IN (?, ?)'; params.push('resolved', 'closed'); }
+
   if (priority && priority !== 'all') { sql += ' AND t.priority = ?'; params.push(priority); }
   if (assigned === 'me') { sql += ' AND t.assigned_to = ?'; params.push(req.session.user.id); }
   if (assigned === 'unassigned') { sql += ' AND t.assigned_to IS NULL'; }
@@ -30,12 +36,13 @@ router.get('/', (req, res) => {
   const tickets = db.prepare(sql).all(...params);
   const agents = db.prepare('SELECT id, full_name, avatar_color FROM users WHERE role IN (?, ?) AND is_active = 1').all('support', 'admin');
 
+  // Stats count all tickets (including archived)
   const stats = {
-    total: db.prepare('SELECT COUNT(*) as c FROM tickets').get().c,
+    total: db.prepare('SELECT COUNT(*) as c FROM tickets WHERE status NOT IN (?, ?)').get('resolved', 'closed').c,
     open: db.prepare('SELECT COUNT(*) as c FROM tickets WHERE status = ?').get('open').c,
     in_progress: db.prepare('SELECT COUNT(*) as c FROM tickets WHERE status = ?').get('in_progress').c,
     waiting: db.prepare('SELECT COUNT(*) as c FROM tickets WHERE status = ?').get('waiting').c,
-    resolved: db.prepare('SELECT COUNT(*) as c FROM tickets WHERE status IN (?, ?)').get('resolved', 'closed').c,
+    archived: db.prepare('SELECT COUNT(*) as c FROM tickets WHERE status IN (?, ?)').get('resolved', 'closed').c,
   };
 
   res.render('tickets/index', { tickets, agents, stats, filters: req.query, title: 'Tickets' });
@@ -136,6 +143,8 @@ router.post('/:id/update', (req, res) => {
   const user = req.session.user;
   const oldTicket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
 
+  if (!oldTicket) return res.redirect('/tickets');
+
   let resolvedAt = oldTicket.resolved_at;
   if ((status === 'resolved' || status === 'closed') && !resolvedAt) {
     resolvedAt = new Date().toISOString();
@@ -149,7 +158,30 @@ router.post('/:id/update', (req, res) => {
   `).run(status, priority, assigned_to || null, category, resolvedAt, req.params.id);
 
   const ticket = db.prepare('SELECT t.*, u.full_name as assignee_name FROM tickets t LEFT JOIN users u ON t.assigned_to = u.id WHERE t.id = ?').get(req.params.id);
-  req.app.get('io').to('role-support').emit('ticket:updated', ticket);
+  const io = req.app.get('io');
+  io.to('role-support').emit('ticket:updated', ticket);
+
+  // ─── LIVECHAT: Close chat session when ticket is closed/resolved ───
+  if (status === 'closed' || status === 'resolved') {
+    const db2 = getDb();
+    const chatSession = db2.prepare('SELECT * FROM chat_sessions WHERE ticket_id = ? AND status != ?').get(req.params.id, 'closed');
+    if (chatSession) {
+      db2.prepare('UPDATE chat_sessions SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?')
+        .run('closed', chatSession.id);
+
+      // Add system message in chat
+      const lang = req.session?.lang || 'fr';
+      const { getTranslations } = require('../i18n');
+      const t2 = getTranslations(lang);
+      db2.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
+        .run(chatSession.id, 'ai', 'System', t2.chat_closed_by_agent);
+
+      // Push close event to visitor
+      io.to(`livechat-${chatSession.visitor_token}`).emit('livechat:closed', {
+        message: t2.chat_closed_by_agent
+      });
+    }
+  }
 
   // Notify on reassignment
   if (assigned_to && parseInt(assigned_to) !== oldTicket.assigned_to && parseInt(assigned_to) !== user.id) {

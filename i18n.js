@@ -239,6 +239,8 @@ const translations = {
     tickets_stat_progress: 'En cours',
     tickets_stat_waiting: 'En attente',
     tickets_stat_resolved: 'Résolus',
+    tickets_stat_archived: '📦 Archivés',
+    tickets_filter_archived: 'Archivés (résolus/fermés)',
     tickets_filter_all_status: 'Tous les statuts',
     tickets_filter_all_priority: 'Toutes les priorités',
     tickets_filter_all_agents: 'Tous les agents',
@@ -456,6 +458,9 @@ const translations = {
     chat_ticket_desc: 'Conversation livechat transférée à un agent humain.',
     chat_ticket_history: 'Historique de la conversation',
     chat_livechat_badge: '💬 Livechat',
+    chat_closed_by_agent: '✅ Cette conversation a été clôturée par notre équipe support. Merci pour votre patience ! Vous pouvez démarrer une nouvelle conversation si besoin.',
+    chat_closed_by_visitor: '👋 Le visiteur a terminé la conversation.',
+    chat_visitor_ended: 'Le visiteur a terminé la conversation livechat.',
   },
 
   // ═══════════════════════════════════════════════════
@@ -694,6 +699,8 @@ const translations = {
     tickets_stat_progress: 'In Progress',
     tickets_stat_waiting: 'Waiting',
     tickets_stat_resolved: 'Resolved',
+    tickets_stat_archived: '📦 Archived',
+    tickets_filter_archived: 'Archived (resolved/closed)',
     tickets_filter_all_status: 'All statuses',
     tickets_filter_all_priority: 'All priorities',
     tickets_filter_all_agents: 'All agents',
@@ -911,6 +918,9 @@ const translations = {
     chat_ticket_desc: 'Livechat conversation transferred to a human agent.',
     chat_ticket_history: 'Conversation history',
     chat_livechat_badge: '💬 Livechat',
+    chat_closed_by_agent: '✅ This conversation has been closed by our support team. Thank you for your patience! You can start a new conversation if needed.',
+    chat_closed_by_visitor: '👋 The visitor has ended the conversation.',
+    chat_visitor_ended: 'The visitor ended the livechat conversation.',
   }
 };
 
