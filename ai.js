@@ -92,7 +92,7 @@ Rules:
   const userMsg = `Write a complete help center article with the title: "${title}"
 
 Based on these resources/information:
-${resources}
+${(resources || '').substring(0, 12000)}
 
 Generate a comprehensive, well-structured article.`;
 
@@ -109,10 +109,11 @@ Rules:
 - Return a JSON array of articles, each with: { "title": "...", "excerpt": "...", "content": "...", "category_suggestion": "..." }
 - Content should be in Markdown format
 - Make articles clear, helpful, and well-structured
+- Generate 3-8 articles max
 - Suggest a category from: getting-started, account, billing, features, troubleshooting, integrations
 - Return ONLY valid JSON, no other text`;
 
-  const userMsg = `Analyze this content and generate help center articles from it:\n\n${content}`;
+  const userMsg = `Analyze this content and generate help center articles from it:\n\n${(content || '').substring(0, 12000)}`;
 
   const result = await callClaude(systemPrompt, userMsg, 4000);
   try {
@@ -323,13 +324,25 @@ Rules:
 - Write in ${langLabel}
 - Return a JSON array of articles: [{ "title": "...", "excerpt": "...", "content": "...", "category_suggestion": "..." }]
 - Content in Markdown format with ## headings
-- Extract key topics and organize into distinct articles
+- Extract key topics and organize into distinct articles (3-8 articles max)
 - Each article should answer a specific question or cover a specific topic
 - Suggest category from: getting-started, account, billing, features, troubleshooting, integrations, rules, trading
 - Make articles customer-friendly — avoid internal jargon
 - Return ONLY valid JSON, no other text`;
 
-  const kbText = kbEntries.map(k => `[${k.title}]:\n${k.content.substring(0, 8000)}`).join('\n\n---\n\n');
+  // Cap total KB text at 12K to stay within timeout
+  let kbText = '';
+  const maxTotal = 12000;
+  for (const k of kbEntries) {
+    const maxPerEntry = Math.min(Math.floor(maxTotal / kbEntries.length), 6000);
+    const entry = `[${k.title}]:\n${k.content.substring(0, maxPerEntry)}\n\n---\n\n`;
+    if (kbText.length + entry.length > maxTotal) {
+      kbText += `[${k.title}]:\n${k.content.substring(0, maxTotal - kbText.length - 50)}\n...(truncated)\n`;
+      break;
+    }
+    kbText += entry;
+  }
+
   const userMsg = `Generate help center articles from these knowledge base entries:\n\n${kbText}`;
 
   const result = await callClaude(systemPrompt, userMsg, 4000);
