@@ -436,6 +436,16 @@ const translations = {
     kb_disable: 'Désactiver',
     kb_delete_confirm: 'Supprimer cette entrée ?',
     kb_empty: 'Aucune connaissance ajoutée. Commencez à alimenter l\'IA !',
+    kb_loading: '⏳ Importation en cours...',
+    kb_flash_required: 'Veuillez remplir le titre et le contenu.',
+    kb_flash_added: '✅ « {title} » ajouté à la base de connaissances.',
+    kb_flash_url_required: 'Veuillez saisir une URL.',
+    kb_flash_url_ok: '✅ « {title} » importé avec succès depuis l\'URL.',
+    kb_flash_url_empty: '⚠️ Aucun contenu exploitable n\'a pu être extrait de cette page. Le site utilise peut-être du JavaScript côté client (SPA) pour afficher son contenu.',
+    kb_flash_url_error: '❌ Erreur lors de l\'import URL :',
+    kb_flash_file_required: 'Veuillez sélectionner un fichier.',
+    kb_flash_file_empty: '⚠️ Aucun contenu exploitable dans ce fichier.',
+    kb_flash_file_error: '❌ Erreur lors de l\'import fichier :',
 
     // ═══════════════════════════════════════════════
     //  LIVECHAT
@@ -881,6 +891,16 @@ const translations = {
     kb_disable: 'Disable',
     kb_delete_confirm: 'Delete this entry?',
     kb_empty: 'No knowledge added yet. Start feeding the AI!',
+    kb_loading: '⏳ Importing...',
+    kb_flash_required: 'Please fill in the title and content.',
+    kb_flash_added: '✅ "{title}" added to the knowledge base.',
+    kb_flash_url_required: 'Please enter a URL.',
+    kb_flash_url_ok: '✅ "{title}" successfully imported from URL.',
+    kb_flash_url_empty: '⚠️ No usable content could be extracted from this page. The site may use client-side JavaScript (SPA) to render its content.',
+    kb_flash_url_error: '❌ URL import error:',
+    kb_flash_file_required: 'Please select a file.',
+    kb_flash_file_empty: '⚠️ No usable content found in this file.',
+    kb_flash_file_error: '❌ File import error:',
 
     // ═══════════════════════════════════════════════
     //  LIVECHAT
