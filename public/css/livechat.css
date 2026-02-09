@@ -354,3 +354,29 @@
     border-radius: 14px;
   }
 }
+
+/* ─── Escalate Inline Form ────────────────────────── */
+.lc-escalate-form {
+  padding: 10px 0;
+}
+.lc-esc-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgba(100, 116, 139, 0.25);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  background: #fff;
+  margin-bottom: 6px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.lc-esc-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+.lc-btn-sm {
+  padding: 6px 14px !important;
+  font-size: 0.78rem !important;
+  border-radius: 6px !important;
+}

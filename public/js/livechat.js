@@ -37,7 +37,9 @@
       close: 'Fermer',
       minimize: 'Réduire',
       powered: 'Propulsé par ProjectHub AI',
-      newChat: 'Nouvelle conversation'
+      newChat: 'Nouvelle conversation',
+      escalateInfo: 'Pour vous mettre en relation avec un agent, merci de renseigner vos coordonnées :',
+      cancel: 'Annuler'
     },
     en: {
       title: 'Support',
@@ -58,7 +60,9 @@
       close: 'Close',
       minimize: 'Minimize',
       powered: 'Powered by ProjectHub AI',
-      newChat: 'New conversation'
+      newChat: 'New conversation',
+      escalateInfo: 'To connect you with an agent, please provide your contact details:',
+      cancel: 'Cancel'
     }
   };
 
@@ -311,21 +315,57 @@
 
   // ─── Escalate to Human ─────────────────────────────
   async function escalateToHuman() {
-    const btn = document.getElementById('lc-human-btn');
-    btn.disabled = true; btn.textContent = t('humanConnecting');
-
-    // Ask for name/email if missing
+    // If name/email missing, show inline form instead of browser prompt()
     if (!state.session?.visitor_name) {
-      const name = prompt(t('nameLabel'));
-      const email = prompt(t('emailLabel'));
+      showEscalateForm();
+      return;
+    }
+    doEscalate();
+  }
+
+  function showEscalateForm() {
+    const bar = document.getElementById('lc-escalate-bar');
+    bar.innerHTML = `
+      <div class="lc-escalate-form">
+        <p style="font-size:0.78rem; color:var(--lc-text-muted,#64748b); margin:0 0 8px;">${t('escalateInfo')}</p>
+        <input type="text" id="lc-esc-name" placeholder="${t('nameLabel')}" class="lc-esc-input" autocomplete="name">
+        <input type="email" id="lc-esc-email" placeholder="${t('emailLabel')}" class="lc-esc-input" autocomplete="email">
+        <div style="display:flex; gap:6px; margin-top:6px;">
+          <button class="lc-btn-primary lc-btn-sm" id="lc-esc-confirm">${t('humanBtn')}</button>
+          <button class="lc-btn-outline lc-btn-sm" id="lc-esc-cancel">${t('cancel')}</button>
+        </div>
+      </div>
+    `;
+    bar.style.display = 'block';
+
+    document.getElementById('lc-esc-confirm').addEventListener('click', async () => {
+      const name = document.getElementById('lc-esc-name').value.trim();
+      const email = document.getElementById('lc-esc-email').value.trim();
       if (name || email) {
         await fetch('/api/chat/session/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: state.token, name, email })
         });
+        if (state.session) {
+          state.session.visitor_name = name;
+          state.session.visitor_email = email;
+        }
       }
-    }
+      doEscalate();
+    });
+
+    document.getElementById('lc-esc-cancel').addEventListener('click', () => {
+      bar.innerHTML = '<button id="lc-human-btn" class="lc-btn-outline">' + t('humanBtn') + '</button>';
+      document.getElementById('lc-human-btn').addEventListener('click', escalateToHuman);
+    });
+
+    document.getElementById('lc-esc-name').focus();
+  }
+
+  async function doEscalate() {
+    const bar = document.getElementById('lc-escalate-bar');
+    bar.innerHTML = '<div style="text-align:center; padding:8px; font-size:0.8rem; color:var(--lc-text-muted,#64748b);">' + t('humanConnecting') + '</div>';
 
     try {
       const res = await fetch('/api/chat/escalate', {
@@ -337,22 +377,24 @@
 
       if (data.ok) {
         state.mode = 'human';
-        document.getElementById('lc-escalate-bar').style.display = 'none';
+        bar.style.display = 'none';
         document.getElementById('lc-status').textContent = t('agentLabel');
 
-        // Add system message
         const sysMsg = { sender_type: 'ai', sender_name: 'System', content: t('humanConnected') + ' ' + data.ticketRef, created_at: new Date().toISOString() };
         state.messages.push(sysMsg);
         appendMessageDOM(sysMsg);
         scrollToBottom();
 
-        // Start polling for agent replies
         startPolling();
+        connectSocket();
       }
-    } catch (e) { console.error('[Livechat] Escalate error:', e); }
-
-    btn.disabled = false; btn.textContent = t('humanBtn');
+    } catch (e) {
+      console.error('[Livechat] Escalate error:', e);
+      bar.innerHTML = '<button id="lc-human-btn" class="lc-btn-outline">' + t('humanBtn') + '</button>';
+      document.getElementById('lc-human-btn').addEventListener('click', escalateToHuman);
+    }
   }
+
 
   // ─── Socket.io Connection ──────────────────────────
   function connectSocket() {

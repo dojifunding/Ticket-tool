@@ -190,11 +190,39 @@ ${knowledgeContext || 'No specific knowledge available.'}
 FAQ ARTICLES:
 ${faqContext || 'No FAQ articles available.'}`;
 
-  // Build multi-turn messages from chat history
-  const messages = chatHistory.map(m => ({
-    role: m.sender_type === 'visitor' ? 'user' : 'assistant',
-    content: m.content
-  }));
+  // Build multi-turn messages — ensure proper alternation and starts with 'user'
+  const messages = [];
+  let lastRole = null;
+
+  for (const m of chatHistory) {
+    const role = m.sender_type === 'visitor' ? 'user' : 'assistant';
+
+    // Skip system messages
+    if (m.sender_type !== 'visitor' && m.sender_type !== 'ai') continue;
+
+    // Ensure alternation: merge consecutive same-role messages
+    if (role === lastRole && messages.length > 0) {
+      messages[messages.length - 1].content += '\n' + m.content;
+    } else {
+      messages.push({ role, content: m.content });
+      lastRole = role;
+    }
+  }
+
+  // API requires first message to be 'user' — remove leading assistant messages
+  while (messages.length > 0 && messages[0].role === 'assistant') {
+    messages.shift();
+  }
+
+  // Must have at least one user message
+  if (messages.length === 0) {
+    return lang === 'fr' ? 'Comment puis-je vous aider ?' : 'How can I help you?';
+  }
+
+  // API requires messages to end with 'user'
+  while (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+    messages.pop();
+  }
 
   return await callClaude(systemPrompt, messages, 500);
 }

@@ -110,12 +110,15 @@ router.post('/message', async (req, res) => {
       const history = db.prepare('SELECT sender_type, content FROM chat_messages WHERE session_id=? ORDER BY created_at ASC').all(session.id);
 
       const lang = req.session?.lang || 'fr';
+      console.log('[Chat] AI request — KB:', kbEntries.length, 'entries, FAQ:', faqArticles.length, 'articles, History:', history.length, 'msgs');
+
       const aiResponse = await ai.livechatReply(history, knowledgeContext, faqContext, lang);
 
       // Save AI response
       db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
         .run(session.id, 'ai', 'Assistant', aiResponse);
 
+      console.log('[Chat] AI responded:', aiResponse.substring(0, 80) + '...');
       return res.json({ ok: true, mode: 'ai', aiMessage: { sender_type: 'ai', sender_name: 'Assistant', content: aiResponse, created_at: new Date().toISOString() } });
     } catch (e) {
       console.error('[Chat] AI error:', e.message);
@@ -128,7 +131,8 @@ router.post('/message', async (req, res) => {
     }
   }
 
-  // AI not configured — just save message
+  // AI not configured
+  console.log('[Chat] AI not configured — message saved without response');
   res.json({ ok: true, mode: session.status });
 });
 
