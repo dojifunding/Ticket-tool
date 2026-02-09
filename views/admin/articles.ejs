@@ -174,6 +174,11 @@
           <span class="btn-text">🤖 <%= t.articles_ai_kb_generate %></span>
           <span class="btn-loading" style="display:none"><%= t.loading %></span>
         </button>
+        <button class="btn btn-ghost" onclick="diagKB()" id="diagBtn" style="margin-left:0.5rem">
+          <span class="btn-text">🔍 Diagnostic</span>
+          <span class="btn-loading" style="display:none">Analyse...</span>
+        </button>
+        <div id="diagResult" style="display:none;margin-top:0.75rem;padding:0.75rem;background:var(--bg-tertiary);border-radius:var(--radius);font-size:0.85rem;max-height:350px;overflow-y:auto"></div>
       </div>
 
       <!-- Progress indicator -->
@@ -423,6 +428,50 @@ async function aiGenerateFromKB() {
     if (!data.ok || !data.jobId) throw new Error(data.error || 'Erreur');
     const result = await pollJob(data.jobId);
     showArticles(result.articles || []);
+  } catch (e) { alert('❌ ' + e.message); }
+  setBtn(btn, false);
+}
+
+async function diagKB() {
+  const checks = document.querySelectorAll('input[name="kbIds"]:checked');
+  if (!checks.length) return alert('Sélectionnez au moins une entrée.');
+  const kbIds = Array.from(checks).map(cb => parseInt(cb.value));
+  const btn = document.getElementById('diagBtn');
+  const result = document.getElementById('diagResult');
+  setBtn(btn, true);
+  try {
+    const res = await fetch('/admin/articles/ai/diagnose-kb', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kbIds })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error('Erreur');
+    let html = '';
+    data.diagnosis.forEach(d => {
+      const stratList = Object.entries(d.strategies).map(([k,v]) => `<span style="color:${v > 3 ? '#10b981' : v > 1 ? '#f59e0b' : '#6b7280'}">${k}:${v}</span>`).join(' · ');
+      const quality = d.bestSections >= 10 ? '🟢' : d.bestSections >= 5 ? '🟡' : '🔴';
+      const markers = [];
+      if (d.hasMarkdownHeaders) markers.push('✅ ##');
+      else markers.push('❌ ##');
+      if (d.hasNumberedSections) markers.push('✅ 1.');
+      else markers.push('❌ 1.');
+      if (d.hasBoldHeaders) markers.push('✅ **');
+      else markers.push('❌ **');
+
+      html += `<div style="margin-bottom:0.75rem;padding-bottom:0.75rem;border-bottom:1px solid var(--border)">
+        <strong>${quality} ${d.title}</strong> — ${d.chars} chars<br>
+        Marqueurs: ${markers.join(' ')}${!d.hasMarkdownHeaders && !d.hasBoldHeaders ? ' <span style="color:#ef4444">⚠️ Pas de structure markdown — <strong>re-scrapez l\'URL</strong> dans la KB</span>' : ''}<br>
+        Stratégies: ${stratList}<br>
+        → <strong style="color:#10b981">${d.bestStrategy}</strong>: ${d.bestSections} sections → ${d.estimatedBatches} batches → <strong>~${d.estimatedArticles} articles estimés</strong><br>
+        <details><summary style="cursor:pointer;color:var(--text-secondary)">Aperçu sections</summary>
+          <div style="margin-top:0.25rem;font-size:0.8rem;color:var(--text-secondary)">
+            ${d.sectionPreviews.map((p, i) => `${i+1}. ${p.replace(/</g, '&lt;')}`).join('<br>')}
+          </div>
+        </details>
+      </div>`;
+    });
+    result.innerHTML = html;
+    result.style.display = 'block';
   } catch (e) { alert('❌ ' + e.message); }
   setBtn(btn, false);
 }

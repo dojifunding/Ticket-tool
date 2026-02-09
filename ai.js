@@ -391,75 +391,160 @@ async function generateFromKB(kbEntries, lang = 'fr', categoryList = '') {
 
   // ─── Step 1: Split ALL KB entries into individual sections ───
   const sections = [];
+
   for (const kb of kbEntries) {
-    if (kb.content.length < 600) {
-      sections.push({ source: kb.title, text: kb.content });
+    let content = kb.content;
+    const len = content.length;
+    console.log('[AI] KB entry "' + kb.title + '": ' + len + ' chars');
+
+    if (len < 400) {
+      sections.push({ source: kb.title, text: content });
+      console.log('[AI]   → Short entry, kept as-is');
       continue;
     }
 
-    // Try multiple splitting strategies for robustness
-    let parts = [];
+    // ─── Clean Jina metadata that interferes with splitting ───
+    content = content
+      .replace(/^Title:.*\n/i, '')
+      .replace(/^URL Source:.*\n/i, '')
+      .replace(/^Markdown Content:\s*\n/i, '')
+      .replace(/^\s*\n/, '')
+      .trim();
 
-    // Strategy 1: Markdown headings (## Title, ### Title)
-    const mdParts = kb.content.split(/\n(?=#{1,3}\s)/).filter(s => s.trim().length > 30);
-    if (mdParts.length > 3) { parts = mdParts; }
+    // Show preview for debugging
+    console.log('[AI]   → Preview (200 chars):', JSON.stringify(content.substring(0, 200)));
 
-    // Strategy 2: Numbered sections (1. Title, 20. Title) — case-insensitive
-    if (parts.length <= 3) {
-      const numParts = kb.content.split(/\n(?=\d{1,2}\.\s+\S)/).filter(s => s.trim().length > 30);
-      if (numParts.length > parts.length) parts = numParts;
+    // ─── Try ALL splitting strategies ───
+    const strategies = {};
+
+    // Strategy 1: Markdown ## headings (most common from Jina)
+    strategies['md_h2'] = content.split(/\n(?=##\s+)/).filter(s => s.trim().length > 30);
+
+    // Strategy 2: Markdown # or ### headings
+    strategies['md_any'] = content.split(/\n(?=#{1,4}\s+)/).filter(s => s.trim().length > 30);
+
+    // Strategy 3: Numbered sections at line start — "1. Title" with word after number
+    // Must start with number followed by dot, space, then a WORD (not just digits)
+    strategies['numbered'] = content.split(/\n(?=\d{1,2}\.\s*[A-Za-zÀ-ÿ])/).filter(s => s.trim().length > 30);
+
+    // Strategy 4: Numbered with ## — "## 1. Title"
+    strategies['md_numbered'] = content.split(/\n(?=#{1,3}\s*\d{1,2}\.)/).filter(s => s.trim().length > 30);
+
+    // Strategy 5: Bold headings **Title** at line start
+    strategies['bold'] = content.split(/\n(?=\*\*[^*]{3,}\*\*)/).filter(s => s.trim().length > 30);
+
+    // Strategy 6: Lines starting with uppercase/titled words (section titles)
+    strategies['uppercase'] = content.split(/\n(?=[A-ZÀ-Ÿ][a-zà-ÿ]+\s[A-ZÀ-Ÿa-zà-ÿ\s]{3,}(?:\n|:))/).filter(s => s.trim().length > 80);
+
+    // Strategy 7: Emoji/symbol headers
+    strategies['emoji'] = content.split(/\n(?=[★◆■●▶📌🔹🔸✅❌⚠️🎯💡🔴🟢🟡])/).filter(s => s.trim().length > 30);
+
+    // Strategy 8: Horizontal rules / separators
+    strategies['hr'] = content.split(/\n(?:---+|===+|\*\*\*+)\n/).filter(s => s.trim().length > 50);
+
+    // Log all strategies with >1 section
+    for (const [name, result] of Object.entries(strategies)) {
+      if (result.length > 1) console.log('[AI]   Strategy "' + name + '": ' + result.length + ' sections');
     }
 
-    // Strategy 3: Bold headings (**Title**)
-    if (parts.length <= 3) {
-      const boldParts = kb.content.split(/\n(?=\*\*[^*]+\*\*)/).filter(s => s.trim().length > 30);
-      if (boldParts.length > parts.length) parts = boldParts;
+    // Pick best strategy (most sections, minimum 2)
+    let bestName = 'none';
+    let bestParts = [];
+    for (const [name, result] of Object.entries(strategies)) {
+      if (result.length > bestParts.length) {
+        bestParts = result;
+        bestName = name;
+      }
     }
 
-    // Strategy 4: UPPERCASE headings or special chars
-    if (parts.length <= 3) {
-      const upParts = kb.content.split(/\n(?=[A-Z★◆■●▶][A-Z\s★◆■●▶]{4,})/).filter(s => s.trim().length > 30);
-      if (upParts.length > parts.length) parts = upParts;
-    }
+    console.log('[AI]   → Best: "' + bestName + '" with ' + bestParts.length + ' sections');
 
-    // Strategy 5: Double newlines (last resort for unstructured docs)
-    if (parts.length <= 3) {
-      const paraParts = kb.content.split(/\n\n+/).filter(s => s.trim().length > 50);
-      if (paraParts.length > 3) {
-        // Group paragraphs into chunks of ~1500 chars
-        let chunk = '';
-        for (const p of paraParts) {
-          if (chunk.length + p.length > 1500 && chunk.length > 200) {
-            sections.push({ source: kb.title, text: chunk.trim() });
-            chunk = '';
-          }
-          chunk += p + '\n\n';
+    // If best strategy found ≥2 sections, use it
+    if (bestParts.length >= 2) {
+      for (const p of bestParts) {
+        const trimmed = p.trim();
+        if (trimmed.length > 30) {
+          sections.push({ source: kb.title, text: trimmed.substring(0, 4000) });
         }
-        if (chunk.trim().length > 50) sections.push({ source: kb.title, text: chunk.trim() });
-        continue; // Skip the merge step below
       }
-    }
+      console.log('[AI]   → Added ' + bestParts.length + ' sections via "' + bestName + '"');
 
-    // Fallback: single large chunk
-    if (parts.length <= 1) {
-      sections.push({ source: kb.title, text: kb.content.substring(0, 4000) });
+      // Check if we should have found more — for large docs with few sections
+      if (bestParts.length < 5 && len > 10000) {
+        console.log('[AI]   ⚠️ Large doc (' + len + ' chars) but only ' + bestParts.length + ' sections — adding paragraph chunks too');
+        // Supplement with paragraph chunking on the longer sections
+        for (const p of bestParts) {
+          if (p.length > 4000) {
+            const subParas = p.split(/\n\n+/).filter(s => s.trim().length > 100);
+            if (subParas.length >= 3) {
+              let chunk = '';
+              for (const sp of subParas) {
+                if (chunk.length + sp.length > 2500 && chunk.length > 300) {
+                  sections.push({ source: kb.title + ' (suite)', text: chunk.trim() });
+                  chunk = '';
+                }
+                chunk += sp + '\n\n';
+              }
+              if (chunk.trim().length > 100) sections.push({ source: kb.title + ' (suite)', text: chunk.trim() });
+            }
+          }
+        }
+      }
       continue;
     }
 
-    console.log('[AI] KB "' + kb.title + '": split into', parts.length, 'sections');
+    // ─── FALLBACK A: Paragraph groups (for docs with double-newline separation) ───
+    console.log('[AI]   → No structure found, trying paragraph chunking...');
+    const paragraphs = content.split(/\n\n+/).filter(s => s.trim().length > 30);
+    console.log('[AI]   → ' + paragraphs.length + ' paragraphs found');
 
-    // Keep each section independent (don't merge) — but cap at 3000 chars each
-    for (const p of parts) {
-      if (p.trim().length > 30) {
-        sections.push({ source: kb.title, text: p.trim().substring(0, 3000) });
+    if (paragraphs.length >= 4) {
+      let chunk = '';
+      let chunkCount = 0;
+      for (const p of paragraphs) {
+        if (chunk.length + p.length > 2000 && chunk.length > 300) {
+          sections.push({ source: kb.title, text: chunk.trim() });
+          chunk = '';
+          chunkCount++;
+        }
+        chunk += p + '\n\n';
       }
+      if (chunk.trim().length > 50) { sections.push({ source: kb.title, text: chunk.trim() }); chunkCount++; }
+      console.log('[AI]   → Created ' + chunkCount + ' paragraph chunks');
+      continue;
     }
+
+    // ─── FALLBACK B: Force chunk every 2000 chars ───
+    console.log('[AI]   → Force splitting every 2000 chars');
+    const chunkSize = 2000;
+    for (let i = 0; i < len; i += chunkSize) {
+      // Try to break at a sentence boundary
+      let end = Math.min(i + chunkSize, len);
+      if (end < len) {
+        const lastDot = content.lastIndexOf('.', end);
+        const lastNewline = content.lastIndexOf('\n', end);
+        const breakPoint = Math.max(lastDot, lastNewline);
+        if (breakPoint > i + 500) end = breakPoint + 1;
+      }
+      const chunk = content.substring(i, end).trim();
+      if (chunk.length > 50) sections.push({ source: kb.title, text: chunk });
+      i = end - 1; // Adjust loop counter since we moved the end
+    }
+    console.log('[AI]   → Created ' + Math.ceil(len / chunkSize) + ' fixed-size chunks');
   }
 
-  console.log('[AI] KB total: ' + sections.length + ' sections from ' + kbEntries.length + ' entries');
+  // ─── Ensure minimum sections for large content ───
+  const totalContentLen = kbEntries.reduce((s, e) => s + e.content.length, 0);
+  const expectedMinSections = Math.max(3, Math.floor(totalContentLen / 3000));
+  if (sections.length < expectedMinSections && totalContentLen > 5000) {
+    console.log('[AI]   ⚠️ Only ' + sections.length + ' sections for ' + totalContentLen + ' chars — expected at least ' + expectedMinSections);
+  }
+
+  console.log('[AI] KB TOTAL: ' + sections.length + ' sections from ' + kbEntries.length + ' entries (' + totalContentLen + ' chars)');
 
   // ─── Step 2: Batch sections & call AI in PARALLEL ───
-  const BATCH_SIZE = 6; // More sections per batch = fewer API calls
+  // Smaller batches (3-4 sections) = AI focuses better = more articles per batch
+  const BATCH_SIZE = 4;
   const batches = [];
   for (let i = 0; i < sections.length; i += BATCH_SIZE) {
     batches.push(sections.slice(i, i + BATCH_SIZE));
@@ -467,37 +552,54 @@ async function generateFromKB(kbEntries, lang = 'fr', categoryList = '') {
 
   const systemPrompt = `You are a FAQ article generator for a customer help center.
 
-TASK: Convert the knowledge base sections below into customer-friendly FAQ articles.
+TASK: Convert the knowledge base sections below into clear, helpful FAQ articles.
 
-RULES:
+CRITICAL RULES:
 - Write in ${langLabel}
-- Generate 1-3 FAQ articles per section — each about ONE specific topic
-- Titles should be questions or clear topics (e.g. "Quels sont les frais d'activation ?")
-- Each article: 100-400 words, Markdown formatted (## headings, **bold**, bullet lists)
-- Include a short excerpt (1 sentence) for each article
+- Create AT LEAST 3-5 FAQ articles from the content provided — ideally one per distinct topic, rule, or concept
+- Each article focuses on ONE specific topic (e.g. one rule, one feature, one process)
+- Titles: use questions or clear topic names (e.g. "What are the drawdown rules?", "How does the payout process work?")
+- Content: 150-500 words per article, Markdown formatted with ## headings, **bold**, and bullet lists where useful
+- Include a 1-sentence excerpt summarizing each article
 - Assign a category from: ${cats}
-- Return ONLY a valid JSON array:
-[{"title":"...","excerpt":"...","content":"...","category_suggestion":"slug"}]
-- NO text outside the JSON`;
+- EXTRACT EVERYTHING: if a section mentions multiple rules, limits, processes, or concepts, split them into separate articles
+- Do NOT merge different topics into one article
+
+Return ONLY a valid JSON array, no other text:
+[{"title":"...","excerpt":"...","content":"...","category_suggestion":"slug"}]`;
 
   const allArticles = [];
-  const maxBatches = Math.min(batches.length, 8);
+  const maxBatches = Math.min(batches.length, 12);
 
   // Helper: process one batch
   async function processBatch(b) {
     const batch = batches[b];
     let batchText = '';
     batch.forEach((s, i) => {
-      batchText += `--- SECTION ${i + 1} (${s.source}) ---\n${s.text.substring(0, 2000)}\n\n`;
+      batchText += `\n--- SECTION ${i + 1} (Source: ${s.source}) ---\n${s.text.substring(0, 3500)}\n`;
     });
-    console.log('[AI] KB batch', b + 1, '/', maxBatches, '—', batchText.length, 'chars');
-    const result = await callClaude(systemPrompt, `Generate FAQ articles from these sections:\n\n${batchText}`, 3000, 60000);
+    console.log('[AI] KB batch', b + 1, '/', maxBatches, '—', batchText.length, 'chars,', batch.length, 'sections');
+    const result = await callClaude(systemPrompt, `Generate FAQ articles from these ${batch.length} sections:\n${batchText}`, 6000, 90000);
     const clean = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const articles = JSON.parse(clean);
-    if (Array.isArray(articles)) {
-      const valid = articles.filter(a => a.title && a.content);
-      console.log('[AI] KB batch', b + 1, '→', valid.length, 'articles');
-      return valid;
+    try {
+      const articles = JSON.parse(clean);
+      if (Array.isArray(articles)) {
+        const valid = articles.filter(a => a.title && a.content && a.content.length > 30);
+        console.log('[AI] KB batch', b + 1, '→', valid.length, 'articles ✅');
+        return valid;
+      }
+    } catch (parseErr) {
+      // Try to extract JSON array from messy output
+      const match = clean.match(/\[[\s\S]*\]/);
+      if (match) {
+        try {
+          const articles = JSON.parse(match[0]);
+          const valid = articles.filter(a => a.title && a.content);
+          console.log('[AI] KB batch', b + 1, '→', valid.length, 'articles (recovered from messy output)');
+          return valid;
+        } catch (e) {}
+      }
+      console.error('[AI] KB batch', b + 1, 'JSON parse error:', parseErr.message);
     }
     return [];
   }

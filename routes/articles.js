@@ -372,6 +372,93 @@ router.post('/ai/suggest-reply', async (req, res) => {
 });
 
 // ─── AI: Generate Articles from Knowledge Base ──────
+// ─── AI: Diagnose KB Splitting (shows how content will be split) ─────
+router.post('/ai/diagnose-kb', (req, res) => {
+  const db = getDb();
+  const { kbIds } = req.body;
+
+  let kbEntries;
+  if (kbIds === 'all' || !kbIds) {
+    kbEntries = db.prepare('SELECT id, title, content FROM knowledge_base WHERE is_active=1').all();
+  } else {
+    const ids = Array.isArray(kbIds) ? kbIds : [kbIds];
+    kbEntries = db.prepare(`SELECT id, title, content FROM knowledge_base WHERE id IN (${ids.map(() => '?').join(',')}) AND is_active=1`).all(...ids);
+  }
+
+  const diagnosis = kbEntries.map(kb => {
+    const len = kb.content.length;
+    const preview = kb.content.substring(0, 300);
+    const strategies = {};
+
+    strategies['md_h2'] = kb.content.split(/\n(?=##\s)/).filter(s => s.trim().length > 30).length;
+    strategies['md_h1h3'] = kb.content.split(/\n(?=#{1,3}\s)/).filter(s => s.trim().length > 30).length;
+    strategies['numbered'] = kb.content.split(/\n(?=\d{1,2}\.\s)/).filter(s => s.trim().length > 30).length;
+    strategies['bold'] = kb.content.split(/\n(?=\*\*[^*]{3,}\*\*)/).filter(s => s.trim().length > 30).length;
+    strategies['paragraphs'] = kb.content.split(/\n\n+/).filter(s => s.trim().length > 50).length;
+
+    const best = Object.entries(strategies).sort((a, b) => b[1] - a[1])[0];
+    const estimatedBatches = Math.ceil(best[1] / 6);
+    const estimatedArticles = `${best[1] * 2}-${best[1] * 4}`;
+
+    return {
+      id: kb.id, title: kb.title, chars: len, preview,
+      strategies, bestStrategy: best[0], bestSections: best[1],
+      estimatedBatches, estimatedArticles
+    };
+  });
+
+  res.json({ ok: true, diagnosis });
+});
+
+// ─── KB Splitting Diagnostic (no AI cost) ────────────
+router.post('/ai/diagnose-kb', (req, res) => {
+  const db = getDb();
+  const { kbIds } = req.body;
+
+  let kbEntries;
+  if (kbIds === 'all' || !kbIds) {
+    kbEntries = db.prepare('SELECT id, title, content FROM knowledge_base WHERE is_active=1').all();
+  } else {
+    const ids = Array.isArray(kbIds) ? kbIds : [kbIds];
+    kbEntries = db.prepare(`SELECT id, title, content FROM knowledge_base WHERE id IN (${ids.map(() => '?').join(',')}) AND is_active=1`).all(...ids);
+  }
+
+  const results = [];
+  for (const kb of kbEntries) {
+    let content = kb.content
+      .replace(/^Title:.*\n/i, '').replace(/^URL Source:.*\n/i, '')
+      .replace(/^Markdown Content:\s*\n/i, '').trim();
+
+    const strategies = {
+      'md_h2': content.split(/\n(?=##\s+)/).filter(s => s.trim().length > 30),
+      'md_any': content.split(/\n(?=#{1,4}\s+)/).filter(s => s.trim().length > 30),
+      'numbered': content.split(/\n(?=\d{1,2}\.\s*[A-Za-zÀ-ÿ])/).filter(s => s.trim().length > 30),
+      'md_numbered': content.split(/\n(?=#{1,3}\s*\d{1,2}\.)/).filter(s => s.trim().length > 30),
+      'bold': content.split(/\n(?=\*\*[^*]{3,}\*\*)/).filter(s => s.trim().length > 30),
+      'paragraphs': content.split(/\n\n+/).filter(s => s.trim().length > 50),
+    };
+
+    const best = Object.entries(strategies).sort((a, b) => b[1].length - a[1].length)[0];
+
+    results.push({
+      id: kb.id, title: kb.title, chars: kb.content.length,
+      preview: content.substring(0, 300),
+      hasMarkdownHeaders: /(^|\n)##\s/.test(content),
+      hasNumberedSections: /(^|\n)\d{1,2}\.\s*[A-Za-zÀ-ÿ]/.test(content),
+      hasBoldHeaders: /(^|\n)\*\*[^*]+\*\*/.test(content),
+      strategies: Object.fromEntries(Object.entries(strategies).map(([k, v]) => [k, v.length])),
+      bestStrategy: best[0],
+      bestSections: best[1].length,
+      sectionPreviews: best[1].slice(0, 8).map(s => s.substring(0, 80).replace(/\n/g, ' ')),
+      estimatedArticles: best[1].length <= 3 ? best[1].length + '-' + (best[1].length * 2)
+        : Math.round(best[1].length * 0.8) + '-' + Math.round(best[1].length * 1.5),
+      estimatedBatches: Math.ceil(best[1].length / 4),
+    });
+  }
+
+  res.json({ ok: true, diagnosis: results });
+});
+
 router.post('/ai/generate-from-kb', async (req, res) => {
   if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured' });
 
