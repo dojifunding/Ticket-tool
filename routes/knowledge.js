@@ -2,11 +2,31 @@ const router = require('express').Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { getDb, logActivity } = require('../database');
 const { isAuthenticated } = require('../middleware/auth');
 const ai = require('../ai');
 
 router.use(isAuthenticated);
+
+// ─── Async Job Queue (avoids Render 30s timeout) ────
+const kbJobs = new Map();
+function createKbJob(asyncFn) {
+  const jobId = crypto.randomBytes(6).toString('hex');
+  kbJobs.set(jobId, { status: 'running', created: Date.now() });
+  asyncFn()
+    .then(result => kbJobs.set(jobId, { status: 'done', result }))
+    .catch(err => kbJobs.set(jobId, { status: 'error', error: err.message }));
+  // Cleanup old jobs
+  for (const [id, j] of kbJobs) { if (Date.now() - j.created > 600000) kbJobs.delete(id); }
+  return jobId;
+}
+
+router.get('/job/:jobId', (req, res) => {
+  const job = kbJobs.get(req.params.jobId);
+  if (!job) return res.json({ status: 'not_found' });
+  res.json(job);
+});
 
 // File upload config
 const uploadDir = path.join(__dirname, '..', 'data', 'uploads');
@@ -63,32 +83,29 @@ router.post('/add-text', (req, res) => {
 });
 
 // ─── Add Single URL ──────────────────────────────────
-router.post('/add-url', async (req, res) => {
+router.post('/add-url', (req, res) => {
   const db = getDb();
   const t = res.locals.t;
   const { title, url } = req.body;
+  const userId = req.session.user.id;
 
   if (!url) {
-    req.session._kbFlash = { type: 'error', msg: t.kb_flash_url_required };
-    return res.redirect('/admin/knowledge');
+    return res.json({ ok: false, error: t.kb_flash_url_required || 'URL required' });
   }
 
-  try {
+  const jobId = createKbJob(async () => {
     const result = await ai.extractFromUrl(url);
     if (!result.processed || result.processed.trim().length < 20) {
-      req.session._kbFlash = { type: 'error', msg: t.kb_flash_url_empty };
-      return res.redirect('/admin/knowledge');
+      throw new Error(t.kb_flash_url_empty || 'No content extracted');
     }
     const finalTitle = title || 'Import: ' + url.substring(0, 60);
     db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,?)')
-      .run(finalTitle, result.processed, 'url', url, req.session.user.id);
-    logActivity(req.session.user.id, 'added', 'knowledge', 0, finalTitle);
-    req.session._kbFlash = { type: 'success', msg: t.kb_flash_url_ok.replace('{title}', finalTitle) };
-  } catch (e) {
-    console.error('[KB] URL import error:', e.message);
-    req.session._kbFlash = { type: 'error', msg: t.kb_flash_url_error + ' ' + e.message };
-  }
-  res.redirect('/admin/knowledge');
+      .run(finalTitle, result.processed, 'url', url, userId);
+    logActivity(userId, 'added', 'knowledge', 0, finalTitle);
+    return { title: finalTitle, chars: result.processed.length, method: result.method };
+  });
+
+  res.json({ ok: true, jobId });
 });
 
 // ═══════════════════════════════════════════════════════
@@ -142,26 +159,26 @@ router.post('/import-urls', async (req, res) => {
 });
 
 // ─── Import Single URL via AJAX (for bulk progress) ──
-router.post('/import-single-url', async (req, res) => {
+router.post('/import-single-url', (req, res) => {
   const db = getDb();
   const userId = req.session.user.id;
   const { url } = req.body;
 
   if (!url) return res.json({ ok: false, error: 'No URL' });
 
-  try {
+  const jobId = createKbJob(async () => {
     const data = await ai.extractFromUrl(url);
     if (!data.processed || data.processed.trim().length < 20) {
-      return res.json({ ok: false, error: 'empty', url });
+      throw new Error('Aucun contenu extrait de cette URL.');
     }
     const title = 'Import: ' + url.replace(/https?:\/\//, '').substring(0, 60);
     db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,?)')
       .run(title, data.processed, 'url', url, userId);
     logActivity(userId, 'added', 'knowledge', 0, title);
-    return res.json({ ok: true, title, chars: data.processed.length, method: data.method, url });
-  } catch (e) {
-    return res.json({ ok: false, error: e.message, url });
-  }
+    return { ok: true, title, chars: data.processed.length, method: data.method, url };
+  });
+
+  res.json({ ok: true, jobId });
 });
 
 // ─── Add from File ───────────────────────────────────
@@ -230,24 +247,22 @@ router.post('/:id/toggle', (req, res) => {
   res.redirect('/admin/knowledge');
 });
 
-// ─── Re-scrape URL KB Entry ─────────────────────────
-router.post('/:id/rescrape', async (req, res) => {
+// ─── Re-scrape URL KB Entry (async) ──────────────────
+router.post('/:id/rescrape', (req, res) => {
   const db = getDb();
   const entry = db.prepare('SELECT * FROM knowledge_base WHERE id=?').get(req.params.id);
   if (!entry || entry.source_type !== 'url' || !entry.source_ref) {
-    req.session._kbFlash = { type: 'error', message: 'Entrée non-URL ou introuvable.' };
-    return res.redirect('/admin/knowledge');
+    return res.json({ ok: false, error: 'Entrée non-URL ou introuvable.' });
   }
 
-  try {
-    const ai = require('../ai');
+  const jobId = createKbJob(async () => {
     const data = await ai.extractFromUrl(entry.source_ref);
+    const oldLen = entry.content.length;
     db.prepare('UPDATE knowledge_base SET content=?, created_at=CURRENT_TIMESTAMP WHERE id=?').run(data.processed, entry.id);
-    req.session._kbFlash = { type: 'success', message: `✅ Re-scrapé: ${data.processed.length} chars (${data.method})` };
-  } catch (e) {
-    req.session._kbFlash = { type: 'error', message: `❌ Erreur: ${e.message}` };
-  }
-  res.redirect('/admin/knowledge');
+    return { title: entry.title, chars: data.processed.length, oldChars: oldLen, method: data.method };
+  });
+
+  res.json({ ok: true, jobId });
 });
 
 router.post('/:id/delete', (req, res) => {

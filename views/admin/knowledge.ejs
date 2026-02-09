@@ -137,10 +137,8 @@
           </form>
           <button class="btn btn-xs btn-ghost" onclick="toggleEditKb(<%= entry.id %>)">✏️</button>
           <% if (entry.source_type === 'url') { %>
-            <form method="POST" action="/admin/knowledge/<%= entry.id %>/rescrape" style="display:inline"
-                  onsubmit="this.querySelector('button').textContent='⏳';this.querySelector('button').disabled=true">
-              <button type="submit" class="btn btn-xs btn-ghost" title="Re-scraper l'URL">🔄</button>
-            </form>
+            <button class="btn btn-xs btn-ghost" title="Re-scraper l'URL" id="rescrapeBtn<%= entry.id %>"
+                    onclick="rescrapeKb(<%= entry.id %>)">🔄</button>
           <% } %>
           <form method="POST" action="/admin/knowledge/<%= entry.id %>/delete" style="display:inline"
                 onsubmit="return confirm('<%= t.kb_delete_confirm %>')">
@@ -248,13 +246,31 @@ async function importSingleUrl() {
       body: JSON.stringify({ url })
     });
     const data = await res.json();
-    if (data.ok) {
-      updateProgress(1, 1, url + ' — ' + data.chars + ' chars (' + data.method + ')', 'success');
-      endProgress(1, 1);
-    } else {
-      updateProgress(1, 1, url + ' — ' + data.error, 'error');
-      endProgress(0, 1);
+    if (data.jobId) {
+      // Poll for completion
+      const poll = async () => {
+        const r = await fetch('/admin/knowledge/job/' + data.jobId);
+        const job = await r.json();
+        if (job.status === 'done') {
+          const result = job.result;
+          updateProgress(1, 1, url + ' — ' + result.chars + ' chars (' + result.method + ')', 'success');
+          endProgress(1, 1);
+          btn.disabled = false; btn.textContent = '<%= t.kb_import_btn %>';
+          return;
+        }
+        if (job.status === 'error') {
+          updateProgress(1, 1, url + ' — ' + job.error, 'error');
+          endProgress(0, 1);
+          btn.disabled = false; btn.textContent = '<%= t.kb_import_btn %>';
+          return;
+        }
+        setTimeout(poll, 2000);
+      };
+      poll();
+      return;
     }
+    updateProgress(1, 1, url + ' — ' + (data.error || 'Erreur'), 'error');
+    endProgress(0, 1);
   } catch (e) {
     updateProgress(1, 1, url + ' — ' + e.message, 'error');
     endProgress(0, 1);
@@ -278,7 +294,19 @@ async function importBulkUrls() {
 
   let successCount = 0;
 
-  // Process sequentially (one at a time to avoid overload)
+  // Helper: wait for job to complete
+  async function waitForJob(jobId, maxWait = 120000) {
+    const start = Date.now();
+    while (Date.now() - start < maxWait) {
+      const r = await fetch('/admin/knowledge/job/' + jobId);
+      const job = await r.json();
+      if (job.status === 'done') return { ok: true, result: job.result };
+      if (job.status === 'error') return { ok: false, error: job.error };
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    return { ok: false, error: 'Timeout' };
+  }
+
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
     try {
@@ -289,11 +317,16 @@ async function importBulkUrls() {
         body: JSON.stringify({ url })
       });
       const data = await res.json();
-      if (data.ok) {
-        updateProgress(i + 1, urls.length, url + ' — ' + data.chars + ' chars (' + data.method + ')', 'success');
-        successCount++;
+      if (data.jobId) {
+        const result = await waitForJob(data.jobId);
+        if (result.ok) {
+          updateProgress(i + 1, urls.length, url + ' — ' + result.result.chars + ' chars (' + result.result.method + ')', 'success');
+          successCount++;
+        } else {
+          updateProgress(i + 1, urls.length, url + ' — ' + result.error, 'error');
+        }
       } else {
-        updateProgress(i + 1, urls.length, url + ' — ' + data.error, 'error');
+        updateProgress(i + 1, urls.length, url + ' — ' + (data.error || 'Erreur'), 'error');
       }
     } catch (e) {
       updateProgress(i + 1, urls.length, url + ' — ' + e.message, 'error');
@@ -302,6 +335,36 @@ async function importBulkUrls() {
 
   endProgress(successCount, urls.length);
   btn.disabled = false; btn.textContent = '<%= t.kb_import_bulk_btn %>';
+}
+
+// ─── Re-scrape KB Entry (async with polling) ─────────
+async function rescrapeKb(id) {
+  const btn = document.getElementById('rescrapeBtn' + id);
+  if (!btn) return;
+  btn.textContent = '⏳'; btn.disabled = true;
+
+  try {
+    const res = await fetch('/admin/knowledge/' + id + '/rescrape', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const data = await res.json();
+    if (!data.jobId) { btn.textContent = '❌'; alert(data.error || 'Erreur'); return; }
+
+    // Poll
+    const poll = async () => {
+      const r = await fetch('/admin/knowledge/job/' + data.jobId);
+      const job = await r.json();
+      if (job.status === 'done') {
+        btn.textContent = '✅';
+        alert('Re-scrapé: ' + job.result.chars + ' chars (avant: ' + job.result.oldChars + ')');
+        setTimeout(() => location.reload(), 500);
+        return;
+      }
+      if (job.status === 'error') { btn.textContent = '❌'; alert('Erreur: ' + job.error); btn.disabled = false; return; }
+      setTimeout(poll, 2000);
+    };
+    poll();
+  } catch (e) { btn.textContent = '❌'; alert(e.message); btn.disabled = false; }
 }
 </script>
 
