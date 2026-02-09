@@ -50,20 +50,48 @@
     </form>
   </div>
 
-  <!-- URL Input -->
+  <!-- URL Input — Single + Bulk -->
   <div class="kb-tab-content" id="kbTabUrl">
-    <form method="POST" action="/admin/knowledge/add-url" class="kb-form">
+    <div class="kb-url-modes">
+      <button class="kb-url-mode active" onclick="switchUrlMode('single')">🔗 <%= t.kb_url_single %></button>
+      <button class="kb-url-mode" onclick="switchUrlMode('bulk')">📋 <%= t.kb_url_bulk %></button>
+    </div>
+
+    <!-- Single URL -->
+    <div id="urlModeSingle" class="kb-form">
       <div class="form-group">
         <label><%= t.kb_url_label %></label>
-        <input type="url" name="url" required placeholder="https://example.com/page">
+        <input type="url" id="singleUrl" placeholder="https://example.com/page">
       </div>
       <div class="form-group">
         <label><%= t.kb_url_title %></label>
-        <input type="text" name="title" placeholder="<%= t.kb_url_title_placeholder %>">
+        <input type="text" id="singleUrlTitle" placeholder="<%= t.kb_url_title_placeholder %>">
       </div>
       <p class="text-muted text-sm"><%= t.kb_url_hint %></p>
-      <button type="submit" class="btn btn-primary"><%= t.kb_import_btn %></button>
-    </form>
+      <button type="button" class="btn btn-primary" id="singleUrlBtn" onclick="importSingleUrl()"><%= t.kb_import_btn %></button>
+    </div>
+
+    <!-- Bulk URLs -->
+    <div id="urlModeBulk" class="kb-form" style="display:none">
+      <div class="form-group">
+        <label><%= t.kb_url_bulk_label %></label>
+        <textarea id="bulkUrls" rows="6" placeholder="https://example.com/page1&#10;https://example.com/page2&#10;https://example.com/page3&#10;..."></textarea>
+        <span class="form-hint"><%= t.kb_url_bulk_hint %></span>
+      </div>
+      <button type="button" class="btn btn-primary" id="bulkImportBtn" onclick="importBulkUrls()"><%= t.kb_import_bulk_btn %></button>
+    </div>
+
+    <!-- Progress Area -->
+    <div id="urlProgress" style="display:none; margin-top:1rem;">
+      <div class="kb-progress-header">
+        <span id="urlProgressText"></span>
+        <span id="urlProgressCount"></span>
+      </div>
+      <div class="kb-progress-bar">
+        <div class="kb-progress-fill" id="urlProgressFill" style="width:0%"></div>
+      </div>
+      <div class="kb-progress-log" id="urlProgressLog"></div>
+    </div>
   </div>
 
   <!-- File Upload -->
@@ -154,21 +182,121 @@ function switchKbTab(tab) {
   event.target.classList.add('active');
   document.getElementById('kbTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
 }
+function switchUrlMode(mode) {
+  document.querySelectorAll('.kb-url-mode').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('urlModeSingle').style.display = mode === 'single' ? 'block' : 'none';
+  document.getElementById('urlModeBulk').style.display = mode === 'bulk' ? 'block' : 'none';
+}
 function toggleEditKb(id) {
   const el = document.getElementById('kbEdit' + id);
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
-// Loading state on form submit (URL & file can take time)
-document.querySelectorAll('.kb-form').forEach(form => {
+// Loading state on form submit
+document.querySelectorAll('.kb-form[action]').forEach(form => {
   form.addEventListener('submit', function() {
     const btn = form.querySelector('button[type="submit"]');
-    if (btn) {
-      btn.disabled = true;
-      btn.dataset.originalText = btn.textContent;
-      btn.textContent = '<%= t.kb_loading %>'; 
-    }
+    if (btn) { btn.disabled = true; btn.textContent = '<%= t.kb_loading %>'; }
   });
 });
+
+// ─── Progress UI Helpers ─────────────────────────────
+function showProgress() {
+  document.getElementById('urlProgress').style.display = 'block';
+  document.getElementById('urlProgressLog').innerHTML = '';
+  document.getElementById('urlProgressFill').style.width = '0%';
+}
+function updateProgress(current, total, msg, status) {
+  const pct = Math.round((current / total) * 100);
+  document.getElementById('urlProgressFill').style.width = pct + '%';
+  document.getElementById('urlProgressCount').textContent = current + '/' + total;
+  document.getElementById('urlProgressText').textContent = '<%= t.kb_importing %>...';
+
+  const log = document.getElementById('urlProgressLog');
+  const icon = status === 'success' ? '✅' : status === 'error' ? '❌' : '⚠️';
+  log.innerHTML += '<div class="kb-log-item kb-log-' + status + '">' + icon + ' ' + msg + '</div>';
+  log.scrollTop = log.scrollHeight;
+}
+function endProgress(successCount, total) {
+  document.getElementById('urlProgressText').textContent = '<%= t.kb_import_done %>';
+  document.getElementById('urlProgressCount').textContent = successCount + '/' + total + ' ✅';
+  if (successCount > 0) {
+    setTimeout(() => window.location.reload(), 1500);
+  }
+}
+
+// ─── Single URL Import ──────────────────────────────
+async function importSingleUrl() {
+  const url = document.getElementById('singleUrl').value.trim();
+  if (!url) return;
+
+  const btn = document.getElementById('singleUrlBtn');
+  btn.disabled = true; btn.textContent = '<%= t.kb_loading %>';
+  showProgress();
+  updateProgress(0, 1, url + ' — <%= t.kb_fetching %>...', 'pending');
+
+  try {
+    const res = await fetch('/admin/knowledge/import-single-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      updateProgress(1, 1, url + ' — ' + data.chars + ' chars (' + data.method + ')', 'success');
+      endProgress(1, 1);
+    } else {
+      updateProgress(1, 1, url + ' — ' + data.error, 'error');
+      endProgress(0, 1);
+    }
+  } catch (e) {
+    updateProgress(1, 1, url + ' — ' + e.message, 'error');
+    endProgress(0, 1);
+  }
+
+  btn.disabled = false; btn.textContent = '<%= t.kb_import_btn %>';
+}
+
+// ─── Bulk URL Import ─────────────────────────────────
+async function importBulkUrls() {
+  const text = document.getElementById('bulkUrls').value.trim();
+  const urls = text.split(/[\n\r]+/).map(u => u.trim()).filter(u => u && (u.startsWith('http://') || u.startsWith('https://')));
+
+  if (urls.length === 0) { alert('<%= t.kb_url_bulk_none %>'); return; }
+  if (urls.length > 50) { alert('<%= t.kb_url_bulk_max %>'); return; }
+
+  const btn = document.getElementById('bulkImportBtn');
+  btn.disabled = true; btn.textContent = '<%= t.kb_loading %>';
+  showProgress();
+  document.getElementById('urlProgressText').textContent = '<%= t.kb_importing %> 0/' + urls.length;
+
+  let successCount = 0;
+
+  // Process sequentially (one at a time to avoid overload)
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    try {
+      document.getElementById('urlProgressText').textContent = '<%= t.kb_importing %> ' + (i+1) + '/' + urls.length;
+      const res = await fetch('/admin/knowledge/import-single-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        updateProgress(i + 1, urls.length, url + ' — ' + data.chars + ' chars (' + data.method + ')', 'success');
+        successCount++;
+      } else {
+        updateProgress(i + 1, urls.length, url + ' — ' + data.error, 'error');
+      }
+    } catch (e) {
+      updateProgress(i + 1, urls.length, url + ' — ' + e.message, 'error');
+    }
+  }
+
+  endProgress(successCount, urls.length);
+  btn.disabled = false; btn.textContent = '<%= t.kb_import_bulk_btn %>';
+}
 </script>
 
 <%- include('../partials/foot') %>

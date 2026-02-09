@@ -677,3 +677,75 @@
   gap: 0.5rem;
   font-size: 0.85rem;
 }
+
+/* ═══════════════════════════════════════════════════════
+   KNOWLEDGE BASE — Bulk URL Import & Progress
+   ═══════════════════════════════════════════════════════ */
+.kb-url-modes {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  padding: 3px;
+  margin-bottom: 1rem;
+}
+.kb-url-mode {
+  flex: 1;
+  padding: 0.45rem 0.75rem;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.kb-url-mode.active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.kb-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+.kb-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+.kb-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), #818cf8);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.kb-progress-log {
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 0.78rem;
+  font-family: 'SF Mono', monospace;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  padding: 0.5rem;
+}
+.kb-log-item {
+  padding: 3px 6px;
+  border-radius: 3px;
+  margin-bottom: 2px;
+  word-break: break-all;
+}
+.kb-log-success { color: #059669; }
+.kb-log-error { color: #dc2626; }
+.kb-log-pending { color: var(--text-secondary); }

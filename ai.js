@@ -201,87 +201,29 @@ ${faqContext || 'No FAQ articles available.'}`;
 
 // ─── Extract Content from URL ────────────────────────
 async function extractFromUrl(url) {
-  // Validate URL
-  let parsedUrl;
-  try { parsedUrl = new URL(url); } catch (e) { throw new Error('Invalid URL format'); }
-  if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('Only HTTP/HTTPS URLs are supported');
+  const { scrapeUrl } = require('./scraper');
 
-  let html;
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'identity',
-        'Cache-Control': 'no-cache'
-      },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(20000) // 20s timeout
-    });
+  const result = await scrapeUrl(url);
+  const text = result.text;
 
-    if (!response.ok) throw new Error(`Server returned HTTP ${response.status} ${response.statusText}`);
+  console.log('[KB] Extracted', text.length, 'chars via', result.method, 'from', url);
 
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('text/') && !contentType.includes('html') && !contentType.includes('json') && !contentType.includes('xml')) {
-      throw new Error(`Unsupported content type: ${contentType}. Only HTML/text pages are supported.`);
-    }
-
-    html = await response.text();
-  } catch (e) {
-    if (e.name === 'TimeoutError' || e.message.includes('timeout')) {
-      throw new Error('Connection timeout (20s). The site may be slow or blocking automated access.');
-    }
-    if (e.message.includes('fetch failed') || e.message.includes('ENOTFOUND')) {
-      throw new Error(`Cannot reach ${parsedUrl.hostname}. Check the URL or try again later.`);
-    }
-    throw new Error(`Failed to fetch: ${e.message}`);
-  }
-
-  if (!html || html.trim().length < 50) {
-    throw new Error('Page returned empty or very short content. It may require JavaScript to render (SPA).');
-  }
-
-  // HTML to text conversion
-  let text = html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
-    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
-    .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
-    .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .replace(/&#\d+;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (text.length < 30) {
-    throw new Error('Could not extract meaningful text. The page may use JavaScript rendering (React/Vue SPA) which cannot be parsed server-side.');
-  }
-
-  // Truncate
-  if (text.length > 15000) text = text.substring(0, 15000) + '...';
-
-  console.log('[KB] Extracted', text.length, 'chars from', url);
-
-  // Summarize with AI if available
+  // Summarize with AI if available and text is substantial
   if (isConfigured() && text.length > 200) {
     try {
       const summary = await callClaude(
-        'You are a content extractor. Summarize the following web page content into clear, structured knowledge that could be used to answer customer questions. Keep all important facts, pricing, features, policies, rules. Remove navigation, ads, and irrelevant content. Output in the same language as the source. If the content is already concise, keep it mostly as-is.',
+        'You are a content extractor. Summarize the following web page content into clear, structured knowledge that could be used to answer customer questions. Keep ALL important facts, pricing, features, policies, rules, conditions. Remove navigation, ads, and irrelevant content. Output in the same language as the source. If the content is already well-structured, keep it mostly as-is.',
         `URL: ${url}\n\nExtracted page content:\n${text}`,
         3000
       );
-      return { raw: text, processed: summary, url };
+      return { raw: text, processed: summary, url, method: result.method };
     } catch (e) {
       console.error('[KB] AI summarization failed, using raw text:', e.message);
-      return { raw: text, processed: text, url };
+      return { raw: text, processed: text, url, method: result.method };
     }
   }
 
-  return { raw: text, processed: text, url };
+  return { raw: text, processed: text, url, method: result.method };
 }
 
 // ─── Analyze Image ───────────────────────────────────

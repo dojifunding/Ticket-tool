@@ -448,6 +448,16 @@ const translations = {
     kb_flash_file_required: 'Veuillez sélectionner un fichier.',
     kb_flash_file_empty: '⚠️ Aucun contenu exploitable dans ce fichier.',
     kb_flash_file_error: '❌ Erreur lors de l\'import fichier :',
+    kb_url_single: 'URL unique',
+    kb_url_bulk: 'Import en masse',
+    kb_url_bulk_label: 'URLs à importer (une par ligne)',
+    kb_url_bulk_hint: 'Collez jusqu\'à 50 URLs, une par ligne. Chaque page sera récupérée et analysée automatiquement.',
+    kb_url_bulk_none: 'Aucune URL valide trouvée. Vérifiez que chaque ligne commence par http:// ou https://',
+    kb_url_bulk_max: 'Maximum 50 URLs par import.',
+    kb_import_bulk_btn: '🚀 Importer les URLs',
+    kb_importing: 'Importation',
+    kb_import_done: '✅ Import terminé !',
+    kb_fetching: 'Récupération',
 
     // ═══════════════════════════════════════════════
     //  LIVECHAT
@@ -908,6 +918,16 @@ const translations = {
     kb_flash_file_required: 'Please select a file.',
     kb_flash_file_empty: '⚠️ No usable content found in this file.',
     kb_flash_file_error: '❌ File import error:',
+    kb_url_single: 'Single URL',
+    kb_url_bulk: 'Bulk import',
+    kb_url_bulk_label: 'URLs to import (one per line)',
+    kb_url_bulk_hint: 'Paste up to 50 URLs, one per line. Each page will be fetched and analyzed automatically.',
+    kb_url_bulk_none: 'No valid URLs found. Make sure each line starts with http:// or https://',
+    kb_url_bulk_max: 'Maximum 50 URLs per import.',
+    kb_import_bulk_btn: '🚀 Import URLs',
+    kb_importing: 'Importing',
+    kb_import_done: '✅ Import complete!',
+    kb_fetching: 'Fetching',
 
     // ═══════════════════════════════════════════════
     //  LIVECHAT

@@ -62,7 +62,7 @@ router.post('/add-text', (req, res) => {
   res.redirect('/admin/knowledge');
 });
 
-// ─── Add from URL ────────────────────────────────────
+// ─── Add Single URL ──────────────────────────────────
 router.post('/add-url', async (req, res) => {
   const db = getDb();
   const t = res.locals.t;
@@ -74,26 +74,94 @@ router.post('/add-url', async (req, res) => {
   }
 
   try {
-    console.log('[KB] Fetching URL:', url);
     const result = await ai.extractFromUrl(url);
-
     if (!result.processed || result.processed.trim().length < 20) {
       req.session._kbFlash = { type: 'error', msg: t.kb_flash_url_empty };
       return res.redirect('/admin/knowledge');
     }
-
     const finalTitle = title || 'Import: ' + url.substring(0, 60);
     db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,?)')
       .run(finalTitle, result.processed, 'url', url, req.session.user.id);
-
     logActivity(req.session.user.id, 'added', 'knowledge', 0, finalTitle);
     req.session._kbFlash = { type: 'success', msg: t.kb_flash_url_ok.replace('{title}', finalTitle) };
   } catch (e) {
     console.error('[KB] URL import error:', e.message);
     req.session._kbFlash = { type: 'error', msg: t.kb_flash_url_error + ' ' + e.message };
   }
-
   res.redirect('/admin/knowledge');
+});
+
+// ═══════════════════════════════════════════════════════
+//  BULK URL IMPORT (AJAX with progress)
+// ═══════════════════════════════════════════════════════
+router.post('/import-urls', async (req, res) => {
+  const db = getDb();
+  const userId = req.session.user.id;
+  let { urls } = req.body;
+
+  // Accept array or newline-separated string
+  if (typeof urls === 'string') {
+    urls = urls.split(/[\n\r]+/).map(u => u.trim()).filter(u => u && u.startsWith('http'));
+  }
+  if (!urls || urls.length === 0) {
+    return res.json({ ok: false, error: 'No valid URLs provided' });
+  }
+
+  // Cap at 50 URLs per batch
+  if (urls.length > 50) urls = urls.slice(0, 50);
+
+  // Process URLs sequentially and stream results via SSE-like JSON array
+  const results = [];
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    const result = { url, index: i, total: urls.length, status: 'pending', title: '', error: '' };
+
+    try {
+      const data = await ai.extractFromUrl(url);
+      if (!data.processed || data.processed.trim().length < 20) {
+        result.status = 'empty';
+        result.error = 'No content extracted';
+      } else {
+        const title = 'Import: ' + url.replace(/https?:\/\//, '').substring(0, 60);
+        db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,?)')
+          .run(title, data.processed, 'url', url, userId);
+        logActivity(userId, 'added', 'knowledge', 0, title);
+        result.status = 'success';
+        result.title = title;
+        result.chars = data.processed.length;
+        result.method = data.method || 'unknown';
+      }
+    } catch (e) {
+      result.status = 'error';
+      result.error = e.message;
+    }
+    results.push(result);
+  }
+
+  res.json({ ok: true, results });
+});
+
+// ─── Import Single URL via AJAX (for bulk progress) ──
+router.post('/import-single-url', async (req, res) => {
+  const db = getDb();
+  const userId = req.session.user.id;
+  const { url } = req.body;
+
+  if (!url) return res.json({ ok: false, error: 'No URL' });
+
+  try {
+    const data = await ai.extractFromUrl(url);
+    if (!data.processed || data.processed.trim().length < 20) {
+      return res.json({ ok: false, error: 'empty', url });
+    }
+    const title = 'Import: ' + url.replace(/https?:\/\//, '').substring(0, 60);
+    db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,?)')
+      .run(title, data.processed, 'url', url, userId);
+    logActivity(userId, 'added', 'knowledge', 0, title);
+    return res.json({ ok: true, title, chars: data.processed.length, method: data.method, url });
+  } catch (e) {
+    return res.json({ ok: false, error: e.message, url });
+  }
 });
 
 // ─── Add from File ───────────────────────────────────
@@ -121,10 +189,10 @@ router.post('/add-file', upload.single('file'), async (req, res) => {
         const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
         content = await ai.analyzeImage(base64, mimeMap[ext] || 'image/png', req.body.instruction || null);
       } else {
-        content = `[Image: ${req.file.originalname}] — AI not configured for image analysis.`;
+        content = `[Image: ${req.file.originalname}] — AI not configured.`;
       }
     } else if (ext === '.pdf') {
-      content = `[PDF: ${req.file.originalname}] — PDF content: ` + (req.body.description || 'No description provided.');
+      content = `[PDF: ${req.file.originalname}] — PDF content: ` + (req.body.description || 'No description.');
     }
 
     if (!content || content.trim().length < 5) {
@@ -135,7 +203,6 @@ router.post('/add-file', upload.single('file'), async (req, res) => {
 
     db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,?)')
       .run(title, content, ext.match(/\.(png|jpg|jpeg|gif|webp)$/i) ? 'image' : 'file', req.file.originalname, req.session.user.id);
-
     logActivity(req.session.user.id, 'added', 'knowledge', 0, title);
     req.session._kbFlash = { type: 'success', msg: t.kb_flash_added.replace('{title}', title) };
   } catch (e) {
@@ -147,7 +214,7 @@ router.post('/add-file', upload.single('file'), async (req, res) => {
   res.redirect('/admin/knowledge');
 });
 
-// ─── Edit Entry ──────────────────────────────────────
+// ─── Edit / Toggle / Delete ──────────────────────────
 router.post('/:id/update', (req, res) => {
   const db = getDb();
   const { title, content } = req.body;
@@ -156,17 +223,13 @@ router.post('/:id/update', (req, res) => {
   res.redirect('/admin/knowledge');
 });
 
-// ─── Toggle Active ───────────────────────────────────
 router.post('/:id/toggle', (req, res) => {
   const db = getDb();
   const entry = db.prepare('SELECT is_active FROM knowledge_base WHERE id=?').get(req.params.id);
-  if (entry) {
-    db.prepare('UPDATE knowledge_base SET is_active=? WHERE id=?').run(entry.is_active ? 0 : 1, req.params.id);
-  }
+  if (entry) db.prepare('UPDATE knowledge_base SET is_active=? WHERE id=?').run(entry.is_active ? 0 : 1, req.params.id);
   res.redirect('/admin/knowledge');
 });
 
-// ─── Delete Entry ────────────────────────────────────
 router.post('/:id/delete', (req, res) => {
   const db = getDb();
   db.prepare('DELETE FROM knowledge_base WHERE id=?').run(req.params.id);
