@@ -126,17 +126,18 @@ Rules:
 }
 
 // ─── Suggest Reply for Support Ticket ────────────────
-async function suggestTicketReply(ticket, messages, faqArticles, lang = 'fr') {
+async function suggestTicketReply(ticket, messages, faqArticles, lang = 'fr', kbContext = '', staffResponses = []) {
   const langLabel = lang === 'en' ? 'English' : 'French';
   const systemPrompt = `You are a professional, empathetic customer support agent. Suggest a reply to a customer support ticket.
 
 Rules:
 - Write in ${langLabel}
 - Be professional, warm, and helpful
-- Reference relevant FAQ articles if provided
+- Reference relevant FAQ articles or knowledge base if provided
+- LEARN from past successful staff responses: match their tone, style, and approach
 - Provide a concrete solution or clear next steps
 - Keep the response concise (3-6 sentences)
-- If you reference an FAQ article, mention it naturally (e.g., "As explained in our guide on [topic]...")
+- If you reference an FAQ article, mention it naturally
 - Don't use overly formal language, be natural
 - Return ONLY the reply text, nothing else`;
 
@@ -161,6 +162,17 @@ Category: ${ticket.category}`;
     });
   }
 
+  if (kbContext) {
+    context += '\n\nKNOWLEDGE BASE (use this to answer accurately):\n' + kbContext.substring(0, 4000);
+  }
+
+  if (staffResponses && staffResponses.length > 0) {
+    context += '\n\nPAST STAFF RESPONSES FOR SIMILAR ISSUES (learn from their tone and approach):';
+    staffResponses.forEach(r => {
+      context += `\n---\n[${r.staff_name}] for "${r.ticket_subject}": ${r.content.substring(0, 300)}`;
+    });
+  }
+
   return await callClaude(systemPrompt, context, 1000);
 }
 
@@ -180,7 +192,9 @@ module.exports = {
   improveText,
   livechatReply,
   extractFromUrl,
-  analyzeImage
+  analyzeImage,
+  generateFromKB,
+  analyzeTicketPatterns
 };
 
 // ─── Livechat AI Agent ───────────────────────────────
@@ -298,4 +312,66 @@ async function analyzeImage(base64Data, mimeType, instruction) {
 
   const data = await response.json();
   return data.content[0].text;
+}
+
+// ─── Generate Article from Knowledge Base ────────────
+async function generateFromKB(kbEntries, lang = 'fr') {
+  const langLabel = lang === 'en' ? 'English' : 'French';
+  const systemPrompt = `You are a professional help center article writer. Create clear, helpful FAQ articles from knowledge base entries.
+
+Rules:
+- Write in ${langLabel}
+- Return a JSON array of articles: [{ "title": "...", "excerpt": "...", "content": "...", "category_suggestion": "..." }]
+- Content in Markdown format with ## headings
+- Extract key topics and organize into distinct articles
+- Each article should answer a specific question or cover a specific topic
+- Suggest category from: getting-started, account, billing, features, troubleshooting, integrations, rules, trading
+- Make articles customer-friendly — avoid internal jargon
+- Return ONLY valid JSON, no other text`;
+
+  const kbText = kbEntries.map(k => `[${k.title}]:\n${k.content.substring(0, 8000)}`).join('\n\n---\n\n');
+  const userMsg = `Generate help center articles from these knowledge base entries:\n\n${kbText}`;
+
+  const result = await callClaude(systemPrompt, userMsg, 4000);
+  try {
+    const clean = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    console.error('[AI] Failed to parse KB article generation:', e.message);
+    return [{ title: 'Generated Article', excerpt: '', content: result, category_suggestion: 'general' }];
+  }
+}
+
+// ─── Analyze Ticket/Chat Patterns → Suggest Articles ─
+async function analyzeTicketPatterns(recentQuestions, existingArticleTitles, lang = 'fr') {
+  const langLabel = lang === 'en' ? 'English' : 'French';
+  const systemPrompt = `You are an AI analyst for a customer support team. Analyze recent customer questions and detect recurring patterns that should become FAQ articles.
+
+Rules:
+- Write in ${langLabel}
+- Compare questions against EXISTING articles to avoid duplicates
+- Only suggest articles for topics asked 2+ times that are NOT already covered
+- Return a JSON array (can be empty []): [{ "title": "...", "excerpt": "...", "content": "...", "category_suggestion": "...", "frequency": N, "sample_questions": ["..."] }]
+- Content in Markdown format, well-structured
+- Be specific — don't suggest generic articles
+- frequency = estimated number of times this topic was asked
+- Return ONLY valid JSON, no other text
+- If no new articles are needed, return []`;
+
+  const userMsg = `EXISTING FAQ ARTICLES (do NOT duplicate these):
+${existingArticleTitles.map(t => '- ' + t).join('\n') || '(none)'}
+
+RECENT CUSTOMER QUESTIONS (from tickets and livechat):
+${recentQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+
+Analyze these questions and suggest new FAQ articles for recurring topics not yet covered.`;
+
+  const result = await callClaude(systemPrompt, userMsg, 4000);
+  try {
+    const clean = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    console.error('[AI] Failed to parse pattern analysis:', e.message);
+    return [];
+  }
 }

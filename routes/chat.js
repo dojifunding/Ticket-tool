@@ -59,6 +59,53 @@ router.post('/message', async (req, res) => {
   // Save visitor message
   db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
     .run(session.id, 'visitor', session.visitor_name || 'Visitor', content);
+
+  // ─── Auto Pattern Detection (async, every 50 visitor messages) ───
+  try {
+    const msgCount = db.prepare("SELECT COUNT(*) as c FROM chat_messages WHERE sender_type='visitor'").get().c;
+    if (msgCount > 0 && msgCount % 50 === 0 && ai.isConfigured()) {
+      const pendingCount = db.prepare("SELECT COUNT(*) as c FROM ai_article_suggestions WHERE status='pending'").get().c;
+      if (pendingCount < 10) { // Don't pile up too many suggestions
+        console.log('[Chat] Auto-triggering pattern analysis (message #' + msgCount + ')');
+        // Fire and forget — don't wait
+        (async () => {
+          try {
+            const recentChats = db.prepare("SELECT content FROM chat_messages WHERE sender_type='visitor' AND created_at > datetime('now','-30 days') ORDER BY created_at DESC LIMIT 100").all();
+            const recentTickets = db.prepare("SELECT subject, description FROM tickets WHERE created_at > datetime('now','-30 days') ORDER BY created_at DESC LIMIT 50").all();
+            const questions = [
+              ...recentTickets.map(t => `[Ticket] ${t.subject}: ${(t.description||'').substring(0, 150)}`),
+              ...recentChats.map(c => `[Chat] ${c.content.substring(0, 150)}`)
+            ];
+            if (questions.length < 5) return;
+            const existingTitles = db.prepare("SELECT title FROM articles WHERE is_published=1").all().map(a => a.title);
+            const pendingTitles = db.prepare("SELECT title FROM ai_article_suggestions WHERE status='pending'").all().map(s => s.title);
+            const suggestions = await ai.analyzeTicketPatterns(questions, [...existingTitles, ...pendingTitles]);
+            let saved = 0;
+            for (const s of suggestions) {
+              if (!s.title || !s.content) continue;
+              db.prepare("INSERT INTO ai_article_suggestions (title,content,excerpt,category_suggestion,source_type,source_details) VALUES(?,?,?,?,'auto_pattern',?)").run(
+                s.title, s.content, s.excerpt || '', s.category_suggestion || 'general',
+                JSON.stringify({ frequency: s.frequency || 0, sample_questions: s.sample_questions || [] })
+              );
+              saved++;
+            }
+            if (saved > 0) {
+              const admins = db.prepare("SELECT id FROM users WHERE role IN('admin','support') AND is_active=1").all();
+              for (const admin of admins) {
+                db.prepare("INSERT INTO notifications (user_id,type,title,message,link) VALUES(?,?,?,?,?)").run(
+                  admin.id, 'ai_suggestion',
+                  `🤖 ${saved} article(s) FAQ suggéré(s)`,
+                  `L'IA a détecté ${saved} sujet(s) récurrent(s). Revoyez les suggestions.`,
+                  '/admin/articles/suggestions'
+                );
+              }
+              console.log('[Chat] Auto-pattern: saved', saved, 'suggestions');
+            }
+          } catch (err) { console.error('[Chat] Auto-pattern error:', err.message); }
+        })();
+      }
+    }
+  } catch (e) { /* ignore pattern detection errors */ }
   db.prepare('UPDATE chat_sessions SET updated_at=CURRENT_TIMESTAMP WHERE id=?').run(session.id);
 
   // If in human mode, also save to ticket_messages

@@ -1,0 +1,233 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <a href="/admin/articles" class="back-link">← <%= t.articles_title %></a>
+    <h1 class="page-title"><%= t.ai_suggestions_title %></h1>
+    <p class="page-subtitle"><%= t.ai_suggestions_subtitle %></p>
+  </div>
+  <div class="header-btns">
+    <% if (aiConfigured) { %>
+      <button class="btn btn-primary" onclick="analyzePatterns()" id="analyzeBtn">
+        <span class="btn-text">🔍 <%= t.ai_suggestions_analyze %></span>
+        <span class="btn-loading" style="display:none"><%= t.loading %></span>
+      </button>
+    <% } %>
+  </div>
+</div>
+
+<% const pending = suggestions.filter(s => s.status === 'pending'); %>
+<% const reviewed = suggestions.filter(s => s.status !== 'pending'); %>
+
+<% if (pending.length > 0) { %>
+<div class="section-header" style="margin-bottom:1rem">
+  <h2 style="font-size:1.1rem;color:var(--warning)">⏳ <%= t.ai_suggestions_pending %> (<%= pending.length %>)</h2>
+</div>
+
+<div class="suggestions-grid">
+  <% pending.forEach(s => { %>
+    <div class="suggestion-card" id="suggestion-<%= s.id %>">
+      <div class="suggestion-header">
+        <h3 class="suggestion-title"><%= s.title %></h3>
+        <div class="suggestion-meta">
+          <span class="badge badge-info"><%= s.category_suggestion || 'general' %></span>
+          <% if (s.details && s.details.frequency) { %>
+            <span class="badge badge-warning">🔥 ~<%= s.details.frequency %>x</span>
+          <% } %>
+          <span class="text-muted" style="font-size:0.8rem"><%= new Date(s.created_at).toLocaleDateString(t.lang) %></span>
+        </div>
+      </div>
+
+      <% if (s.excerpt) { %>
+        <p class="suggestion-excerpt"><%= s.excerpt %></p>
+      <% } %>
+
+      <% if (s.details && s.details.sample_questions && s.details.sample_questions.length > 0) { %>
+        <div class="suggestion-samples">
+          <strong><%= t.ai_suggestions_samples %>:</strong>
+          <ul>
+            <% s.details.sample_questions.slice(0, 3).forEach(q => { %>
+              <li><%= q %></li>
+            <% }) %>
+          </ul>
+        </div>
+      <% } %>
+
+      <details class="suggestion-preview">
+        <summary><%= t.ai_suggestions_preview %></summary>
+        <div class="suggestion-content-preview"><%= s.content.substring(0, 600) %><% if (s.content.length > 600) { %>...<% } %></div>
+      </details>
+
+      <form method="POST" action="/admin/articles/suggestions/<%= s.id %>/review" class="suggestion-actions" id="form-<%= s.id %>">
+        <input type="hidden" name="title" value="<%= s.title %>" id="title-<%= s.id %>">
+        <input type="hidden" name="content" value="<%= s.content %>" id="content-<%= s.id %>">
+        <input type="hidden" name="excerpt" value="<%= s.excerpt || '' %>">
+
+        <div class="suggestion-btns">
+          <button type="button" class="btn btn-primary btn-sm" onclick="editAndApprove(<%= s.id %>)">
+            ✅ <%= t.ai_suggestions_approve %>
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="editSuggestion(<%= s.id %>)">
+            ✏️ <%= t.edit %>
+          </button>
+          <button type="submit" name="action" value="reject" class="btn btn-ghost btn-sm" style="color:var(--danger)">
+            ❌ <%= t.ai_suggestions_reject %>
+          </button>
+        </div>
+      </form>
+    </div>
+  <% }) %>
+</div>
+<% } else { %>
+  <div class="empty-state" style="margin-bottom:2rem">
+    <p>✨ <%= t.ai_suggestions_empty %></p>
+  </div>
+<% } %>
+
+<% if (reviewed.length > 0) { %>
+<div class="section-header" style="margin:2rem 0 1rem">
+  <h2 style="font-size:1.1rem;color:var(--text-secondary)"><%= t.ai_suggestions_history %> (<%= reviewed.length %>)</h2>
+</div>
+<div class="table-container">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th><%= t.articles_col_title %></th>
+        <th><%= t.articles_col_status %></th>
+        <th><%= t.ai_suggestions_reviewer %></th>
+        <th><%= t.articles_col_updated %></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% reviewed.forEach(s => { %>
+        <tr>
+          <td><%= s.title %></td>
+          <td>
+            <% if (s.status === 'approved') { %>
+              <span class="badge badge-success">✅ <%= t.ai_suggestions_approved %></span>
+            <% } else { %>
+              <span class="badge badge-danger">❌ <%= t.ai_suggestions_rejected %></span>
+            <% } %>
+          </td>
+          <td><%= s.reviewer_name || '-' %></td>
+          <td><%= s.reviewed_at ? new Date(s.reviewed_at).toLocaleDateString(t.lang) : '-' %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2>✏️ <%= t.ai_suggestions_edit_title %></h2>
+      <button class="modal-close" onclick="closeModal('editModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label><%= t.articles_ai_article_title %></label>
+        <input type="text" id="editTitle">
+      </div>
+      <div class="form-group">
+        <label>Contenu</label>
+        <textarea id="editContent" rows="15" style="font-family:monospace;font-size:0.85rem"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Catégorie</label>
+        <select id="editCategory">
+          <% if (typeof categories !== 'undefined' && categories) { categories.forEach(c => { %>
+            <option value="<%= c.id %>"><%= c.name %></option>
+          <% }) } %>
+          <option value="">— Sans catégorie —</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:0.5rem;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeModal('editModal')"><%= t.cancel %></button>
+        <button class="btn btn-primary" onclick="submitEdit()">✅ <%= t.ai_suggestions_approve_publish %></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let editingSuggestionId = null;
+
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function editSuggestion(id) {
+  editingSuggestionId = id;
+  const card = document.getElementById('suggestion-' + id);
+  document.getElementById('editTitle').value = document.getElementById('title-' + id).value;
+  document.getElementById('editContent').value = document.getElementById('content-' + id).value;
+  document.getElementById('editModal').classList.add('active');
+}
+
+function editAndApprove(id) {
+  editSuggestion(id);
+}
+
+function submitEdit() {
+  if (!editingSuggestionId) return;
+  const form = document.getElementById('form-' + editingSuggestionId);
+  document.getElementById('title-' + editingSuggestionId).value = document.getElementById('editTitle').value;
+  document.getElementById('content-' + editingSuggestionId).value = document.getElementById('editContent').value;
+
+  // Add action=approve
+  const actionInput = document.createElement('input');
+  actionInput.type = 'hidden'; actionInput.name = 'action'; actionInput.value = 'approve';
+  const catInput = document.createElement('input');
+  catInput.type = 'hidden'; catInput.name = 'category_id'; catInput.value = document.getElementById('editCategory').value;
+  form.appendChild(actionInput);
+  form.appendChild(catInput);
+  form.submit();
+}
+
+async function analyzePatterns() {
+  const btn = document.getElementById('analyzeBtn');
+  btn.querySelector('.btn-text').style.display = 'none';
+  btn.querySelector('.btn-loading').style.display = 'inline';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/admin/articles/ai/analyze-patterns', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (data.saved > 0) {
+        alert((data.saved) + ' suggestion(s) ajoutée(s) !');
+        location.reload();
+      } else {
+        alert(data.message || 'Aucun nouveau sujet récurrent détecté.');
+      }
+    } else { alert('Erreur: ' + (data.error || 'Inconnue')); }
+  } catch (e) { alert('Erreur: ' + e.message); }
+
+  btn.querySelector('.btn-text').style.display = 'inline';
+  btn.querySelector('.btn-loading').style.display = 'none';
+  btn.disabled = false;
+}
+
+document.getElementById('editModal')?.addEventListener('click', function(e) { if (e.target === this) closeModal('editModal'); });
+</script>
+
+<style>
+.suggestions-grid { display:grid; gap:1rem; grid-template-columns:1fr; }
+@media(min-width:900px) { .suggestions-grid { grid-template-columns:1fr 1fr; } }
+.suggestion-card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:1.25rem; display:flex; flex-direction:column; gap:0.75rem; }
+.suggestion-header { display:flex; flex-direction:column; gap:0.5rem; }
+.suggestion-title { font-size:1rem; font-weight:600; margin:0; }
+.suggestion-meta { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; }
+.suggestion-excerpt { color:var(--text-secondary); font-size:0.9rem; margin:0; }
+.suggestion-samples { font-size:0.85rem; color:var(--text-secondary); }
+.suggestion-samples ul { margin:0.25rem 0 0; padding-left:1.2rem; }
+.suggestion-samples li { margin-bottom:0.15rem; }
+.suggestion-preview { margin-top:auto; }
+.suggestion-preview summary { cursor:pointer; font-size:0.85rem; color:var(--primary); font-weight:500; }
+.suggestion-content-preview { margin-top:0.5rem; font-size:0.85rem; color:var(--text-secondary); white-space:pre-wrap; max-height:200px; overflow-y:auto; background:var(--bg-tertiary); padding:0.75rem; border-radius:6px; }
+.suggestion-btns { display:flex; gap:0.5rem; flex-wrap:wrap; }
+</style>
+
+<%- include('../partials/foot') %>

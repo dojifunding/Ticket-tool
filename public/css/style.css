@@ -2220,3 +2220,10 @@ input, select, textarea, button {
   background: var(--primary);
   color: #fff;
 }
+
+/* ─── KB Select List in AI Modal ──────────────────── */
+.kb-select-list { max-height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; }
+.kb-select-all, .kb-select-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.5rem; cursor: pointer; border-radius: 4px; font-size: 0.9rem; }
+.kb-select-all:hover, .kb-select-item:hover { background: var(--bg-tertiary); }
+.kb-select-all { border-bottom: 1px solid var(--border); margin-bottom: 0.25rem; padding-bottom: 0.5rem; }
+.kb-select-item input, .kb-select-all input { accent-color: var(--primary); }

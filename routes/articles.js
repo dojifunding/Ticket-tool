@@ -30,8 +30,15 @@ router.get('/', (req, res) => {
 
   const categories = db.prepare('SELECT * FROM article_categories ORDER BY position ASC').all();
 
+  // KB entries for "From KB" tab
+  const kbEntries = db.prepare('SELECT id, title, content FROM knowledge_base WHERE is_active=1').all();
+
+  // Pending AI suggestions count
+  let pendingSuggestions = 0;
+  try { pendingSuggestions = db.prepare('SELECT COUNT(*) as c FROM ai_article_suggestions WHERE status="pending"').get().c; } catch {}
+
   res.render('admin/articles', {
-    articles, categories,
+    articles, categories, kbEntries, pendingSuggestions,
     aiConfigured: ai.isConfigured(),
     title: res.locals.t.articles_title
   });
@@ -150,7 +157,7 @@ router.post('/ai/generate-from-content', async (req, res) => {
   }
 });
 
-// ─── AI: Suggest Ticket Reply ────────────────────────
+// ─── AI: Suggest Ticket Reply (Enhanced with KB + Staff Learning) ────
 router.post('/ai/suggest-reply', async (req, res) => {
   if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured. Set ANTHROPIC_API_KEY.' });
 
@@ -169,19 +176,230 @@ router.post('/ai/suggest-reply', async (req, res) => {
     `).all(ticketId);
 
     // Find relevant FAQ articles
-    const keywords = ticket.subject.split(/\s+/).filter(w => w.length > 3).join('%');
-    const faqArticles = keywords ? db.prepare(`
+    const keywords = ticket.subject.split(/\s+/).filter(w => w.length > 3);
+    const keywordPattern = keywords.join('%');
+    const faqArticles = keywordPattern ? db.prepare(`
       SELECT title, excerpt, content FROM articles
       WHERE is_published = 1 AND (title LIKE ? OR content LIKE ? OR excerpt LIKE ?)
       LIMIT 3
-    `).all(`%${keywords}%`, `%${keywords}%`, `%${keywords}%`) : [];
+    `).all(`%${keywordPattern}%`, `%${keywordPattern}%`, `%${keywordPattern}%`) : [];
 
-    const suggestion = await ai.suggestTicketReply(ticket, messages, faqArticles, lang);
-    res.json({ ok: true, suggestion, articlesUsed: faqArticles.length });
+    // ─── KB Context (smart keyword search, same as livechat) ───
+    const kbEntries = db.prepare('SELECT title, content FROM knowledge_base WHERE is_active=1').all();
+    let kbContext = '';
+    if (kbEntries.length > 0 && keywords.length > 0) {
+      const scoredChunks = [];
+      for (const kb of kbEntries) {
+        const sections = kb.content.length > 1500
+          ? kb.content.split(/\n(?=\d{1,2}\.\s+[A-Z0-9★◆■])|(?=\n#{1,3}\s)/g).filter(s => s.trim().length > 20)
+          : [kb.content];
+        for (const section of sections) {
+          const lower = (kb.title + ' ' + section).toLowerCase();
+          let score = 0;
+          for (const kw of keywords) {
+            const kwl = kw.toLowerCase();
+            if (lower.substring(0, 150).includes(kwl)) score += 3;
+            else if (lower.includes(kwl)) score += 1;
+          }
+          if (score > 0) scoredChunks.push({ text: section.trim(), score, len: section.length });
+        }
+      }
+      scoredChunks.sort((a, b) => b.score - a.score);
+      let totalLen = 0;
+      for (const chunk of scoredChunks.slice(0, 5)) {
+        if (totalLen + chunk.len > 4000) break;
+        kbContext += chunk.text + '\n\n';
+        totalLen += chunk.len;
+      }
+    }
+
+    // ─── Staff Learning: find past responses to similar tickets ───
+    const staffResponses = [];
+    if (keywords.length > 0) {
+      const similarTickets = db.prepare(`
+        SELECT t.id, t.subject FROM tickets t
+        WHERE t.id != ? AND t.status IN ('resolved', 'closed')
+        AND (${keywords.slice(0, 3).map(() => 't.subject LIKE ?').join(' OR ')})
+        ORDER BY t.updated_at DESC LIMIT 5
+      `).all(ticketId, ...keywords.slice(0, 3).map(k => `%${k}%`));
+
+      for (const st of similarTickets) {
+        const staffMsg = db.prepare(`
+          SELECT tm.content, u.full_name as staff_name
+          FROM ticket_messages tm JOIN users u ON tm.user_id = u.id
+          WHERE tm.ticket_id = ? AND u.role IN ('admin', 'support')
+          ORDER BY tm.created_at DESC LIMIT 1
+        `).get(st.id);
+        if (staffMsg) {
+          staffResponses.push({ ...staffMsg, ticket_subject: st.subject });
+        }
+      }
+    }
+
+    console.log('[AI] Suggest reply — FAQ:', faqArticles.length, '| KB:', kbContext.length, 'chars | Staff history:', staffResponses.length);
+    const suggestion = await ai.suggestTicketReply(ticket, messages, faqArticles, lang, kbContext, staffResponses);
+    res.json({ ok: true, suggestion, articlesUsed: faqArticles.length, kbUsed: kbContext.length > 0, staffLearned: staffResponses.length });
   } catch (e) {
     console.error('[AI] Suggest reply error:', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// ─── AI: Generate Articles from Knowledge Base ──────
+router.post('/ai/generate-from-kb', async (req, res) => {
+  if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured' });
+
+  try {
+    const db = getDb();
+    const { kbIds } = req.body; // array of KB entry IDs, or 'all'
+    const lang = req.session.lang || 'fr';
+
+    let kbEntries;
+    if (kbIds === 'all' || !kbIds) {
+      kbEntries = db.prepare('SELECT id, title, content FROM knowledge_base WHERE is_active=1').all();
+    } else {
+      const ids = Array.isArray(kbIds) ? kbIds : [kbIds];
+      kbEntries = db.prepare(`SELECT id, title, content FROM knowledge_base WHERE id IN (${ids.map(() => '?').join(',')}) AND is_active=1`).all(...ids);
+    }
+
+    if (!kbEntries.length) return res.status(400).json({ error: 'No KB entries found' });
+
+    const articles = await ai.generateFromKB(kbEntries, lang);
+    res.json({ ok: true, articles });
+  } catch (e) {
+    console.error('[AI] Generate from KB error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── AI: Analyze Patterns → Suggest FAQ Articles ────
+router.post('/ai/analyze-patterns', async (req, res) => {
+  if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured' });
+
+  try {
+    const db = getDb();
+    const lang = req.session.lang || 'fr';
+
+    // Collect recent customer questions from tickets + livechat
+    const recentTickets = db.prepare(`
+      SELECT subject, description FROM tickets
+      WHERE created_at > datetime('now', '-30 days')
+      ORDER BY created_at DESC LIMIT 50
+    `).all();
+
+    const recentChats = db.prepare(`
+      SELECT cm.content FROM chat_messages cm
+      JOIN chat_sessions cs ON cm.session_id = cs.id
+      WHERE cm.sender_type = 'visitor' AND cm.created_at > datetime('now', '-30 days')
+      ORDER BY cm.created_at DESC LIMIT 100
+    `).all();
+
+    const questions = [
+      ...recentTickets.map(t => `[Ticket] ${t.subject}: ${(t.description || '').substring(0, 150)}`),
+      ...recentChats.map(c => `[Chat] ${c.content.substring(0, 150)}`)
+    ];
+
+    if (questions.length < 3) {
+      return res.json({ ok: true, suggestions: [], message: 'Not enough data to analyze patterns (need at least 3 recent questions)' });
+    }
+
+    // Get existing articles to avoid duplicates
+    const existingTitles = db.prepare('SELECT title FROM articles WHERE is_published=1').all().map(a => a.title);
+    const pendingSuggestions = db.prepare('SELECT title FROM ai_article_suggestions WHERE status="pending"').all().map(s => s.title);
+    const allExisting = [...existingTitles, ...pendingSuggestions];
+
+    const suggestions = await ai.analyzeTicketPatterns(questions, allExisting, lang);
+
+    // Save suggestions to DB and notify admins
+    let saved = 0;
+    for (const s of suggestions) {
+      if (!s.title || !s.content) continue;
+
+      db.prepare(`INSERT INTO ai_article_suggestions (title, content, excerpt, category_suggestion, source_type, source_details)
+        VALUES (?, ?, ?, ?, 'pattern', ?)`).run(
+        s.title, s.content, s.excerpt || '', s.category_suggestion || 'general',
+        JSON.stringify({ frequency: s.frequency || 0, sample_questions: s.sample_questions || [] })
+      );
+      saved++;
+    }
+
+    // Notify all admin/support users
+    if (saved > 0) {
+      const admins = db.prepare("SELECT id FROM users WHERE role IN ('admin', 'support') AND is_active=1").all();
+      for (const admin of admins) {
+        db.prepare('INSERT INTO notifications (user_id, type, title, message, link) VALUES (?, ?, ?, ?, ?)').run(
+          admin.id,
+          'ai_suggestion',
+          lang === 'fr' ? `🤖 ${saved} article(s) FAQ suggéré(s) par l'IA` : `🤖 ${saved} FAQ article(s) suggested by AI`,
+          lang === 'fr'
+            ? `L'IA a détecté ${saved} sujet(s) récurrent(s) dans les tickets et le livechat. Revoyez et publiez les suggestions.`
+            : `AI detected ${saved} recurring topic(s) in tickets and livechat. Review and publish the suggestions.`,
+          '/admin/articles/suggestions'
+        );
+      }
+    }
+
+    console.log('[AI] Pattern analysis — questions:', questions.length, '| suggestions saved:', saved);
+    res.json({ ok: true, suggestions, saved });
+  } catch (e) {
+    console.error('[AI] Analyze patterns error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── AI Suggestions Review Page ─────────────────────
+router.get('/suggestions', (req, res) => {
+  const db = getDb();
+  const t = require('../i18n').getTranslations(req.session.lang || 'fr');
+
+  const suggestions = db.prepare(`
+    SELECT ais.*, u.full_name as reviewer_name
+    FROM ai_article_suggestions ais
+    LEFT JOIN users u ON ais.reviewed_by = u.id
+    ORDER BY
+      CASE ais.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 WHEN 'rejected' THEN 2 END,
+      ais.created_at DESC
+  `).all();
+
+  // Parse source_details JSON
+  suggestions.forEach(s => {
+    try { s.details = JSON.parse(s.source_details || '{}'); } catch { s.details = {}; }
+  });
+
+  const categories = db.prepare('SELECT * FROM article_categories ORDER BY position ASC').all();
+
+  res.render('admin/ai-suggestions', { user: req.session.user, t, suggestions, categories, aiConfigured: ai.isConfigured() });
+});
+
+// ─── Approve/Edit/Reject Suggestion ─────────────────
+router.post('/suggestions/:id/review', (req, res) => {
+  const db = getDb();
+  const { action, title, content, excerpt, category_id } = req.body;
+  const suggestion = db.prepare('SELECT * FROM ai_article_suggestions WHERE id=?').get(req.params.id);
+  if (!suggestion) return res.redirect('/admin/articles/suggestions');
+
+  if (action === 'approve') {
+    // Create the article
+    const slug = (title || suggestion.title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const catId = category_id || null;
+    const result = db.prepare(`INSERT INTO articles (title, slug, excerpt, content, category_id, is_published, is_public, author_id)
+      VALUES (?, ?, ?, ?, ?, 1, 1, ?)`).run(
+      title || suggestion.title,
+      slug,
+      excerpt || suggestion.excerpt || '',
+      content || suggestion.content,
+      catId,
+      req.session.user.id
+    );
+
+    db.prepare('UPDATE ai_article_suggestions SET status="approved", reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP, published_article_id=? WHERE id=?')
+      .run(req.session.user.id, result.lastInsertRowid, req.params.id);
+  } else if (action === 'reject') {
+    db.prepare('UPDATE ai_article_suggestions SET status="rejected", reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP WHERE id=?')
+      .run(req.session.user.id, req.params.id);
+  }
+
+  res.redirect('/admin/articles/suggestions');
 });
 
 module.exports = router;

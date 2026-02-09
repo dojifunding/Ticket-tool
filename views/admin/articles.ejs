@@ -11,6 +11,12 @@
       <%= t.articles_view_public %>
     </a>
     <% if (aiConfigured) { %>
+      <a href="/admin/articles/suggestions" class="btn btn-ghost" style="position:relative">
+        🤖 <%= t.ai_suggestions_link %>
+        <% if (typeof pendingSuggestions !== 'undefined' && pendingSuggestions > 0) { %>
+          <span class="notif-dot" style="position:absolute;top:4px;right:4px;width:8px;height:8px;background:var(--danger);border-radius:50%"></span>
+        <% } %>
+      </a>
       <button class="btn btn-ghost" onclick="openAIModal()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93L12 22"/><path d="M8 6a4 4 0 0 1 8 0"/><path d="M17 12.5c1.77.83 3 2.63 3 4.72A5.22 5.22 0 0 1 14.78 22H9.22A5.22 5.22 0 0 1 4 17.22c0-2.1 1.23-3.89 3-4.72"/></svg>
         <%= t.articles_ai_generate %>
@@ -107,6 +113,7 @@
       <div class="ai-tabs">
         <button class="ai-tab active" onclick="switchAiTab('fromTitle')"><%= t.articles_ai_from_title %></button>
         <button class="ai-tab" onclick="switchAiTab('fromContent')"><%= t.articles_ai_from_content %></button>
+        <button class="ai-tab" onclick="switchAiTab('fromKB')"><%= t.articles_ai_from_kb %></button>
       </div>
 
       <div id="aiTabFromTitle" class="ai-tab-content active">
@@ -135,6 +142,32 @@
         </button>
       </div>
 
+      <div id="aiTabFromKB" class="ai-tab-content">
+        <div class="form-group">
+          <label><%= t.articles_ai_kb_label %></label>
+          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0.75rem"><%= t.articles_ai_kb_desc %></p>
+          <div class="kb-select-list" id="kbList">
+            <% if (typeof kbEntries !== 'undefined' && kbEntries && kbEntries.length > 0) { %>
+              <label class="kb-select-all">
+                <input type="checkbox" id="kbSelectAll" onchange="toggleAllKb()"> <strong><%= t.articles_ai_kb_select_all %></strong>
+              </label>
+              <% kbEntries.forEach(kb => { %>
+                <label class="kb-select-item">
+                  <input type="checkbox" name="kbIds" value="<%= kb.id %>" checked>
+                  <span><%= kb.title %> <span class="text-muted">(<%= Math.round(kb.content.length / 1000) %>K)</span></span>
+                </label>
+              <% }) %>
+            <% } else { %>
+              <p class="text-muted"><%= t.articles_ai_kb_empty %></p>
+            <% } %>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="aiGenerateFromKB()" id="aiGenBtn3">
+          <span class="btn-text">🤖 <%= t.articles_ai_kb_generate %></span>
+          <span class="btn-loading" style="display:none"><%= t.loading %></span>
+        </button>
+      </div>
+
       <div id="aiResult" class="ai-result" style="display:none">
         <h3><%= t.articles_ai_result %></h3>
         <div id="aiResultContent" class="ai-result-content"></div>
@@ -155,13 +188,10 @@ function closeModal(id) { document.getElementById(id).classList.remove('active')
 function switchAiTab(tab) {
   document.querySelectorAll('.ai-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.ai-tab-content').forEach(t => t.classList.remove('active'));
-  if (tab === 'fromTitle') {
-    document.querySelectorAll('.ai-tab')[0].classList.add('active');
-    document.getElementById('aiTabFromTitle').classList.add('active');
-  } else {
-    document.querySelectorAll('.ai-tab')[1].classList.add('active');
-    document.getElementById('aiTabFromContent').classList.add('active');
-  }
+  const tabs = document.querySelectorAll('.ai-tab');
+  if (tab === 'fromTitle') { tabs[0].classList.add('active'); document.getElementById('aiTabFromTitle').classList.add('active'); }
+  else if (tab === 'fromContent') { tabs[1].classList.add('active'); document.getElementById('aiTabFromContent').classList.add('active'); }
+  else { tabs[2].classList.add('active'); document.getElementById('aiTabFromKB').classList.add('active'); }
 }
 
 let aiGeneratedData = null;
@@ -240,6 +270,45 @@ function aiUseResult() {
 
 // On modal overlay click
 document.getElementById('aiModal')?.addEventListener('click', function(e) { if (e.target === this) closeModal('aiModal'); });
+
+function toggleAllKb() {
+  const checked = document.getElementById('kbSelectAll').checked;
+  document.querySelectorAll('input[name="kbIds"]').forEach(cb => cb.checked = checked);
+}
+
+async function aiGenerateFromKB() {
+  const checks = document.querySelectorAll('input[name="kbIds"]:checked');
+  if (!checks.length) return alert('Sélectionnez au moins une entrée de la base de connaissances.');
+
+  const kbIds = Array.from(checks).map(cb => parseInt(cb.value));
+  const btn = document.getElementById('aiGenBtn3');
+  btn.querySelector('.btn-text').style.display = 'none';
+  btn.querySelector('.btn-loading').style.display = 'inline';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/admin/articles/ai/generate-from-kb', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kbIds })
+    });
+    const data = await res.json();
+    if (data.ok && data.articles) {
+      aiGeneratedData = data.articles;
+      let html = '';
+      data.articles.forEach((a, i) => {
+        html += '<div class="ai-preview"><h4>' + (i+1) + '. ' + a.title + '</h4>';
+        html += '<span class="badge badge-info">' + (a.category_suggestion || '') + '</span>';
+        html += '<pre>' + (a.content||'').substring(0, 300) + '...</pre></div>';
+      });
+      document.getElementById('aiResultContent').innerHTML = html;
+      document.getElementById('aiResult').style.display = 'block';
+    } else { alert('Erreur: ' + (data.error || 'Inconnue')); }
+  } catch (e) { alert('Erreur: ' + e.message); }
+
+  btn.querySelector('.btn-text').style.display = 'inline';
+  btn.querySelector('.btn-loading').style.display = 'none';
+  btn.disabled = false;
+}
 </script>
 
 <%- include('../partials/foot') %>

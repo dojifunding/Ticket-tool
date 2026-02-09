@@ -220,6 +220,23 @@ async function initDatabase() {
   )`);
 
   db.exec('CREATE INDEX IF NOT EXISTS idx_chat_sessions_token ON chat_sessions(visitor_token)');
+
+  // ─── AI Article Suggestions ──────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS ai_article_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    excerpt TEXT,
+    category_suggestion TEXT,
+    source_type TEXT NOT NULL DEFAULT 'pattern',
+    source_details TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    reviewed_by INTEGER REFERENCES users(id),
+    reviewed_at DATETIME,
+    published_article_id INTEGER REFERENCES articles(id),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_ai_suggestions_status ON ai_article_suggestions(status)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_chat_sessions_ticket ON chat_sessions(ticket_id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id)');
 
