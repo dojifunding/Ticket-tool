@@ -230,7 +230,7 @@ function switchAiTab(tab) {
 let aiGeneratedData = null;
 
 // ─── Async Job Polling ───
-function pollJob(jobId, interval = 2000, maxTime = 180000) {
+function pollJob(jobId, interval = 2000, maxTime = 300000) {
   const progress = document.getElementById('aiProgress');
   const progressFill = document.getElementById('aiProgressFill');
   const progressText = document.getElementById('aiProgressText');
@@ -245,10 +245,13 @@ function pollJob(jobId, interval = 2000, maxTime = 180000) {
     'Génération des articles FAQ (lot 4)...',
     'Génération des articles FAQ (lot 5)...',
     'Génération des articles FAQ (lot 6)...',
-    'Génération en cours...',
+    'Génération des articles FAQ (lot 7)...',
+    'Encore quelques lots en cours...',
     'Classification des articles...',
-    'Presque terminé...',
-    'Finalisation...'
+    'Presque terminé, patience...',
+    'Finalisation en cours...',
+    'Dernières vérifications...',
+    'Ça arrive bientôt...'
   ];
 
   if (progress) { progress.style.display = 'block'; progressFill.style.width = '5%'; }
@@ -260,7 +263,7 @@ function pollJob(jobId, interval = 2000, maxTime = 180000) {
         pollCount++;
         // Update progress UI
         if (progressText) progressText.textContent = messages[Math.min(pollCount - 1, messages.length - 1)];
-        if (progressFill) progressFill.style.width = Math.min(5 + pollCount * 6, 90) + '%';
+        if (progressFill) progressFill.style.width = Math.min(5 + pollCount * 4, 90) + '%';
 
         const res = await fetch('/admin/articles/ai/job/' + jobId);
         const job = await res.json();

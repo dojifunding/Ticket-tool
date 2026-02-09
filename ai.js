@@ -579,7 +579,7 @@ Return ONLY a valid JSON array, no other text:
       batchText += `\n--- SECTION ${i + 1} (Source: ${s.source}) ---\n${s.text.substring(0, 3500)}\n`;
     });
     console.log('[AI] KB batch', b + 1, '/', maxBatches, '—', batchText.length, 'chars,', batch.length, 'sections');
-    const result = await callClaude(systemPrompt, `Generate FAQ articles from these ${batch.length} sections:\n${batchText}`, 6000, 90000);
+    const result = await callClaude(systemPrompt, `Generate FAQ articles from these ${batch.length} sections:\n${batchText}`, 4500, 60000);
     const clean = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     try {
       const articles = JSON.parse(clean);
