@@ -2,6 +2,36 @@ const router = require('express').Router();
 const { getDb, logActivity } = require('../database');
 const { isAuthenticated } = require('../middleware/auth');
 const ai = require('../ai');
+const crypto = require('crypto');
+
+router.use(isAuthenticated);
+
+// ─── Async AI Job Queue (avoids Render 30s HTTP timeout) ───
+const aiJobs = new Map(); // jobId → { status, result, error, created }
+
+function createJob(fn) {
+  const jobId = crypto.randomBytes(8).toString('hex');
+  aiJobs.set(jobId, { status: 'processing', result: null, error: null, created: Date.now() });
+
+  // Run in background (no await!)
+  fn().then(result => {
+    aiJobs.set(jobId, { status: 'done', result, error: null, created: Date.now() });
+  }).catch(err => {
+    console.error('[AI Job] Error:', err.message);
+    aiJobs.set(jobId, { status: 'error', result: null, error: err.message, created: Date.now() });
+  });
+
+  // Auto-cleanup after 5 min
+  setTimeout(() => aiJobs.delete(jobId), 300000);
+  return jobId;
+}
+
+// Poll endpoint
+router.get('/ai/job/:jobId', (req, res) => {
+  const job = aiJobs.get(req.params.jobId);
+  if (!job) return res.json({ status: 'not_found' });
+  res.json(job);
+});
 
 router.use(isAuthenticated);
 
@@ -131,30 +161,26 @@ router.post('/:id/toggle-publish', (req, res) => {
 router.post('/ai/generate', async (req, res) => {
   if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured. Set ANTHROPIC_API_KEY.' });
 
-  try {
-    const { title, resources } = req.body;
-    const lang = req.session.lang || 'fr';
+  const { title, resources } = req.body;
+  const lang = req.session.lang || 'fr';
+  const jobId = createJob(async () => {
     const content = await ai.generateArticle(title, resources, lang);
-    res.json({ ok: true, content });
-  } catch (e) {
-    console.error('[AI] Generate article error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
+    return { articles: [{ title, content, excerpt: '', category_suggestion: '' }] };
+  });
+  res.json({ ok: true, jobId });
 });
 
 // ─── AI: Generate from Content ───────────────────────
 router.post('/ai/generate-from-content', async (req, res) => {
   if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured. Set ANTHROPIC_API_KEY.' });
 
-  try {
-    const { content } = req.body;
-    const lang = req.session.lang || 'fr';
+  const { content } = req.body;
+  const lang = req.session.lang || 'fr';
+  const jobId = createJob(async () => {
     const articles = await ai.generateArticleFromContent(content, lang);
-    res.json({ ok: true, articles });
-  } catch (e) {
-    console.error('[AI] Generate from content error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
+    return { articles };
+  });
+  res.json({ ok: true, jobId });
 });
 
 // ─── AI: Suggest Ticket Reply (Enhanced with KB + Staff Learning) ────
@@ -249,73 +275,70 @@ router.post('/ai/suggest-reply', async (req, res) => {
 router.post('/ai/generate-from-kb', async (req, res) => {
   if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured' });
 
-  try {
-    const db = getDb();
-    const { kbIds } = req.body; // array of KB entry IDs, or 'all'
-    const lang = req.session.lang || 'fr';
+  const db = getDb();
+  const { kbIds } = req.body;
+  const lang = req.session.lang || 'fr';
 
-    let kbEntries;
-    if (kbIds === 'all' || !kbIds) {
-      kbEntries = db.prepare('SELECT id, title, content FROM knowledge_base WHERE is_active=1').all();
-    } else {
-      const ids = Array.isArray(kbIds) ? kbIds : [kbIds];
-      kbEntries = db.prepare(`SELECT id, title, content FROM knowledge_base WHERE id IN (${ids.map(() => '?').join(',')}) AND is_active=1`).all(...ids);
-    }
-
-    if (!kbEntries.length) return res.status(400).json({ error: 'No KB entries found' });
-
-    const articles = await ai.generateFromKB(kbEntries, lang);
-    res.json({ ok: true, articles });
-  } catch (e) {
-    console.error('[AI] Generate from KB error:', e.message);
-    res.status(500).json({ error: e.message });
+  let kbEntries;
+  if (kbIds === 'all' || !kbIds) {
+    kbEntries = db.prepare('SELECT id, title, content FROM knowledge_base WHERE is_active=1').all();
+  } else {
+    const ids = Array.isArray(kbIds) ? kbIds : [kbIds];
+    kbEntries = db.prepare(`SELECT id, title, content FROM knowledge_base WHERE id IN (${ids.map(() => '?').join(',')}) AND is_active=1`).all(...ids);
   }
+
+  if (!kbEntries.length) return res.status(400).json({ error: 'No KB entries found' });
+
+  const jobId = createJob(async () => {
+    const articles = await ai.generateFromKB(kbEntries, lang);
+    return { articles };
+  });
+  res.json({ ok: true, jobId });
 });
 
 // ─── AI: Analyze Patterns → Suggest FAQ Articles ────
 router.post('/ai/analyze-patterns', async (req, res) => {
   if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured' });
 
-  try {
-    const db = getDb();
-    const lang = req.session.lang || 'fr';
+  const db = getDb();
+  const lang = req.session.lang || 'fr';
 
-    // Collect recent customer questions from tickets + livechat
-    const recentTickets = db.prepare(`
-      SELECT subject, description FROM tickets
-      WHERE created_at > datetime('now', '-30 days')
-      ORDER BY created_at DESC LIMIT 50
-    `).all();
+  // Collect data synchronously (fast)
+  const recentTickets = db.prepare(`
+    SELECT subject, description FROM tickets
+    WHERE created_at > datetime('now', '-30 days')
+    ORDER BY created_at DESC LIMIT 50
+  `).all();
 
-    const recentChats = db.prepare(`
-      SELECT cm.content FROM chat_messages cm
-      JOIN chat_sessions cs ON cm.session_id = cs.id
-      WHERE cm.sender_type = 'visitor' AND cm.created_at > datetime('now', '-30 days')
-      ORDER BY cm.created_at DESC LIMIT 100
-    `).all();
+  const recentChats = db.prepare(`
+    SELECT cm.content FROM chat_messages cm
+    JOIN chat_sessions cs ON cm.session_id = cs.id
+    WHERE cm.sender_type = 'visitor' AND cm.created_at > datetime('now', '-30 days')
+    ORDER BY cm.created_at DESC LIMIT 100
+  `).all();
 
-    const questions = [
-      ...recentTickets.map(t => `[Ticket] ${t.subject}: ${(t.description || '').substring(0, 150)}`),
-      ...recentChats.map(c => `[Chat] ${c.content.substring(0, 150)}`)
-    ];
+  const questions = [
+    ...recentTickets.map(t => `[Ticket] ${t.subject}: ${(t.description || '').substring(0, 150)}`),
+    ...recentChats.map(c => `[Chat] ${c.content.substring(0, 150)}`)
+  ];
 
-    if (questions.length < 3) {
-      return res.json({ ok: true, suggestions: [], message: 'Not enough data to analyze patterns (need at least 3 recent questions)' });
-    }
+  if (questions.length < 3) {
+    return res.json({ ok: true, jobId: null, message: lang === 'fr' ? 'Pas assez de données (minimum 3 questions récentes).' : 'Not enough data (need at least 3 recent questions).' });
+  }
 
-    // Get existing articles to avoid duplicates
-    const existingTitles = db.prepare('SELECT title FROM articles WHERE is_published=1').all().map(a => a.title);
-    const pendingSuggestions = db.prepare('SELECT title FROM ai_article_suggestions WHERE status="pending"').all().map(s => s.title);
-    const allExisting = [...existingTitles, ...pendingSuggestions];
+  const existingTitles = db.prepare('SELECT title FROM articles WHERE is_published=1').all().map(a => a.title);
+  const pendingSuggestions = db.prepare('SELECT title FROM ai_article_suggestions WHERE status="pending"').all().map(s => s.title);
+  const allExisting = [...existingTitles, ...pendingSuggestions];
 
+  const jobId = createJob(async () => {
     const suggestions = await ai.analyzeTicketPatterns(questions, allExisting, lang);
 
-    // Save suggestions to DB and notify admins
+    // Save to DB and notify (inside async job — DB is still accessible)
     let saved = 0;
+    const db2 = getDb();
     for (const s of suggestions) {
       if (!s.title || !s.content) continue;
-
-      db.prepare(`INSERT INTO ai_article_suggestions (title, content, excerpt, category_suggestion, source_type, source_details)
+      db2.prepare(`INSERT INTO ai_article_suggestions (title, content, excerpt, category_suggestion, source_type, source_details)
         VALUES (?, ?, ?, ?, 'pattern', ?)`).run(
         s.title, s.content, s.excerpt || '', s.category_suggestion || 'general',
         JSON.stringify({ frequency: s.frequency || 0, sample_questions: s.sample_questions || [] })
@@ -323,28 +346,22 @@ router.post('/ai/analyze-patterns', async (req, res) => {
       saved++;
     }
 
-    // Notify all admin/support users
     if (saved > 0) {
-      const admins = db.prepare("SELECT id FROM users WHERE role IN ('admin', 'support') AND is_active=1").all();
+      const admins = db2.prepare("SELECT id FROM users WHERE role IN ('admin', 'support') AND is_active=1").all();
       for (const admin of admins) {
-        db.prepare('INSERT INTO notifications (user_id, type, title, message, link) VALUES (?, ?, ?, ?, ?)').run(
-          admin.id,
-          'ai_suggestion',
+        db2.prepare('INSERT INTO notifications (user_id, type, title, message, link) VALUES (?, ?, ?, ?, ?)').run(
+          admin.id, 'ai_suggestion',
           lang === 'fr' ? `🤖 ${saved} article(s) FAQ suggéré(s) par l'IA` : `🤖 ${saved} FAQ article(s) suggested by AI`,
-          lang === 'fr'
-            ? `L'IA a détecté ${saved} sujet(s) récurrent(s) dans les tickets et le livechat. Revoyez et publiez les suggestions.`
-            : `AI detected ${saved} recurring topic(s) in tickets and livechat. Review and publish the suggestions.`,
+          lang === 'fr' ? `L'IA a détecté ${saved} sujet(s) récurrent(s). Revoyez les suggestions.` : `AI detected ${saved} recurring topic(s). Review the suggestions.`,
           '/admin/articles/suggestions'
         );
       }
     }
 
-    console.log('[AI] Pattern analysis — questions:', questions.length, '| suggestions saved:', saved);
-    res.json({ ok: true, suggestions, saved });
-  } catch (e) {
-    console.error('[AI] Analyze patterns error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
+    console.log('[AI] Pattern analysis — questions:', questions.length, '| saved:', saved);
+    return { saved, total: suggestions.length };
+  });
+  res.json({ ok: true, jobId });
 });
 
 // ─── AI Suggestions Review Page ─────────────────────

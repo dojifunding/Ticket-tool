@@ -14,7 +14,7 @@ function isConfigured() {
   return !!getApiKey();
 }
 
-async function callClaude(systemPrompt, userMessage, maxTokens = 2000) {
+async function callClaude(systemPrompt, userMessage, maxTokens = 2000, timeoutMs = 120000) {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
 
@@ -24,8 +24,7 @@ async function callClaude(systemPrompt, userMessage, maxTokens = 2000) {
     : userMessage;
 
   const model = getModel();
-  console.log('[AI] Calling Claude — model:', model, ', messages:', messages.length, ', maxTokens:', maxTokens);
-  console.log('[AI] First msg role:', messages[0]?.role, ', system length:', systemPrompt.length);
+  console.log('[AI] Calling Claude — model:', model, ', messages:', messages.length, ', maxTokens:', maxTokens, ', timeout:', timeoutMs + 'ms');
 
   const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
@@ -40,7 +39,7 @@ async function callClaude(systemPrompt, userMessage, maxTokens = 2000) {
       system: systemPrompt,
       messages
     }),
-    signal: AbortSignal.timeout(25000) // 25s timeout (Render free = 30s)
+    signal: AbortSignal.timeout(timeoutMs)
   });
 
   if (!response.ok) {
@@ -174,7 +173,7 @@ Category: ${ticket.category}`;
     });
   }
 
-  return await callClaude(systemPrompt, context, 1000);
+  return await callClaude(systemPrompt, context, 1000, 25000);
 }
 
 // ─── Improve/Rewrite Text ────────────────────────────
@@ -256,7 +255,7 @@ ${faqContext || 'No FAQ articles available.'}`;
     messages.pop();
   }
 
-  return await callClaude(systemPrompt, messages, 500);
+  return await callClaude(systemPrompt, messages, 500, 25000);
 }
 
 // ─── Extract Content from URL ────────────────────────

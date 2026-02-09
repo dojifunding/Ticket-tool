@@ -192,22 +192,35 @@ async function analyzePatterns() {
 
   try {
     const res = await fetch('/admin/articles/ai/analyze-patterns', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
-      signal: AbortSignal.timeout(28000)
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
     });
     const data = await res.json();
-    if (data.ok) {
-      if (data.saved > 0) {
-        alert((data.saved) + ' suggestion(s) ajoutée(s) !');
-        location.reload();
-      } else {
-        alert(data.message || 'Aucun nouveau sujet récurrent détecté.');
-      }
-    } else { alert('Erreur: ' + (data.error || 'Inconnue')); }
-  } catch (e) {
-    if (e.name === 'TimeoutError' || e.name === 'AbortError') alert('⏳ L\'analyse a pris trop de temps. Réessayez.');
-    else alert('Erreur: ' + e.message);
-  }
+
+    if (data.message) {
+      // Not enough data — no job started
+      alert(data.message);
+    } else if (data.ok && data.jobId) {
+      // Poll for result
+      const poll = async () => {
+        const r = await fetch('/admin/articles/ai/job/' + data.jobId);
+        const job = await r.json();
+        if (job.status === 'done') {
+          if (job.result.saved > 0) {
+            alert(job.result.saved + ' suggestion(s) ajoutée(s) !');
+            location.reload();
+          } else { alert('Aucun nouveau sujet récurrent détecté.'); }
+          return;
+        }
+        if (job.status === 'error') { alert('❌ ' + (job.error || 'Erreur IA')); return; }
+        if (job.status === 'not_found') { alert('❌ Job introuvable'); return; }
+        setTimeout(poll, 2000);
+      };
+      poll();
+      return; // Don't reset button — poll will handle it
+    } else {
+      alert('Erreur: ' + (data.error || 'Inconnue'));
+    }
+  } catch (e) { alert('Erreur: ' + e.message); }
 
   btn.querySelector('.btn-text').style.display = 'inline';
   btn.querySelector('.btn-loading').style.display = 'none';
