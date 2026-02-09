@@ -160,25 +160,30 @@ router.post('/import-urls', async (req, res) => {
 
 // ─── Import Single URL via AJAX (for bulk progress) ──
 router.post('/import-single-url', (req, res) => {
-  const db = getDb();
-  const userId = req.session.user.id;
-  const { url } = req.body;
+  try {
+    const db = getDb();
+    const userId = req.session.user.id;
+    const { url } = req.body;
 
-  if (!url) return res.json({ ok: false, error: 'No URL' });
+    if (!url) return res.json({ ok: false, error: 'No URL' });
 
-  const jobId = createKbJob(async () => {
-    const data = await ai.extractFromUrl(url);
-    if (!data.processed || data.processed.trim().length < 20) {
-      throw new Error('Aucun contenu extrait de cette URL.');
-    }
-    const title = 'Import: ' + url.replace(/https?:\/\//, '').substring(0, 60);
-    db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,?)')
-      .run(title, data.processed, 'url', url, userId);
-    logActivity(userId, 'added', 'knowledge', 0, title);
-    return { ok: true, title, chars: data.processed.length, method: data.method, url };
-  });
+    const jobId = createKbJob(async () => {
+      const data = await ai.extractFromUrl(url);
+      if (!data.processed || data.processed.trim().length < 20) {
+        throw new Error('Aucun contenu extrait de cette URL.');
+      }
+      const title = 'Import: ' + url.replace(/https?:\/\//, '').substring(0, 60);
+      db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,?)')
+        .run(title, data.processed, 'url', url, userId);
+      logActivity(userId, 'added', 'knowledge', 0, title);
+      return { ok: true, title, chars: data.processed.length, method: data.method, url };
+    });
 
-  res.json({ ok: true, jobId });
+    res.json({ ok: true, jobId });
+  } catch (e) {
+    console.error('[KB] Import URL error:', e.message);
+    res.json({ ok: false, error: e.message });
+  }
 });
 
 // ─── Add from File ───────────────────────────────────
@@ -249,20 +254,25 @@ router.post('/:id/toggle', (req, res) => {
 
 // ─── Re-scrape URL KB Entry (async) ──────────────────
 router.post('/:id/rescrape', (req, res) => {
-  const db = getDb();
-  const entry = db.prepare('SELECT * FROM knowledge_base WHERE id=?').get(req.params.id);
-  if (!entry || entry.source_type !== 'url' || !entry.source_ref) {
-    return res.json({ ok: false, error: 'Entrée non-URL ou introuvable.' });
+  try {
+    const db = getDb();
+    const entry = db.prepare('SELECT * FROM knowledge_base WHERE id=?').get(req.params.id);
+    if (!entry || entry.source_type !== 'url' || !entry.source_ref) {
+      return res.json({ ok: false, error: 'Entrée non-URL ou introuvable.' });
+    }
+
+    const jobId = createKbJob(async () => {
+      const data = await ai.extractFromUrl(entry.source_ref);
+      const oldLen = (entry.content || '').length;
+      db.prepare('UPDATE knowledge_base SET content=?, created_at=CURRENT_TIMESTAMP WHERE id=?').run(data.processed, entry.id);
+      return { title: entry.title, chars: data.processed.length, oldChars: oldLen, method: data.method };
+    });
+
+    res.json({ ok: true, jobId });
+  } catch (e) {
+    console.error('[KB] Rescrape error:', e.message);
+    res.json({ ok: false, error: e.message });
   }
-
-  const jobId = createKbJob(async () => {
-    const data = await ai.extractFromUrl(entry.source_ref);
-    const oldLen = entry.content.length;
-    db.prepare('UPDATE knowledge_base SET content=?, created_at=CURRENT_TIMESTAMP WHERE id=?').run(data.processed, entry.id);
-    return { title: entry.title, chars: data.processed.length, oldChars: oldLen, method: data.method };
-  });
-
-  res.json({ ok: true, jobId });
 });
 
 router.post('/:id/delete', (req, res) => {

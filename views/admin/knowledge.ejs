@@ -245,6 +245,13 @@ async function importSingleUrl() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url })
     });
+
+    // Guard against HTML error responses
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('json')) {
+      throw new Error('Erreur serveur (code ' + res.status + ')');
+    }
+
     const data = await res.json();
     if (data.jobId) {
       // Poll for completion
@@ -347,21 +354,30 @@ async function rescrapeKb(id) {
     const res = await fetch('/admin/knowledge/' + id + '/rescrape', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
     });
+
+    // Check if response is JSON (not HTML error page)
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('json')) {
+      throw new Error('Erreur serveur (code ' + res.status + '). Rechargez la page et réessayez.');
+    }
+
     const data = await res.json();
-    if (!data.jobId) { btn.textContent = '❌'; alert(data.error || 'Erreur'); return; }
+    if (!data.jobId) { btn.textContent = '❌'; alert(data.error || 'Erreur'); btn.disabled = false; return; }
 
     // Poll
     const poll = async () => {
-      const r = await fetch('/admin/knowledge/job/' + data.jobId);
-      const job = await r.json();
-      if (job.status === 'done') {
-        btn.textContent = '✅';
-        alert('Re-scrapé: ' + job.result.chars + ' chars (avant: ' + job.result.oldChars + ')');
-        setTimeout(() => location.reload(), 500);
-        return;
-      }
-      if (job.status === 'error') { btn.textContent = '❌'; alert('Erreur: ' + job.error); btn.disabled = false; return; }
-      setTimeout(poll, 2000);
+      try {
+        const r = await fetch('/admin/knowledge/job/' + data.jobId);
+        const job = await r.json();
+        if (job.status === 'done') {
+          btn.textContent = '✅';
+          alert('Re-scrapé: ' + job.result.chars + ' chars (avant: ' + job.result.oldChars + ')');
+          setTimeout(() => location.reload(), 500);
+          return;
+        }
+        if (job.status === 'error') { btn.textContent = '❌'; alert('Erreur: ' + job.error); btn.disabled = false; return; }
+        setTimeout(poll, 2000);
+      } catch (pollErr) { btn.textContent = '❌'; alert('Erreur polling: ' + pollErr.message); btn.disabled = false; }
     };
     poll();
   } catch (e) { btn.textContent = '❌'; alert(e.message); btn.disabled = false; }
