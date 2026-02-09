@@ -1,0 +1,152 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><%= t.kb_title %></h1>
+    <p class="page-subtitle"><%= entries.length %> <%= t.kb_count %></p>
+  </div>
+</div>
+
+<% if (!aiConfigured) { %>
+  <div class="alert alert-info" style="margin-bottom:1.5rem">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    <%= t.kb_ai_hint %>
+  </div>
+<% } %>
+
+<!-- Add Knowledge Tabs -->
+<div class="kb-add-section">
+  <div class="kb-tabs">
+    <button class="kb-tab active" onclick="switchKbTab('text')">📝 <%= t.kb_add_text %></button>
+    <button class="kb-tab" onclick="switchKbTab('url')">🌐 <%= t.kb_add_url %></button>
+    <button class="kb-tab" onclick="switchKbTab('file')">📎 <%= t.kb_add_file %></button>
+  </div>
+
+  <!-- Text Input -->
+  <div class="kb-tab-content active" id="kbTabText">
+    <form method="POST" action="/admin/knowledge/add-text" class="kb-form">
+      <div class="form-row">
+        <div class="form-group form-group-lg">
+          <label><%= t.kb_entry_title %></label>
+          <input type="text" name="title" required placeholder="<%= t.kb_title_placeholder %>">
+        </div>
+      </div>
+      <div class="form-group">
+        <label><%= t.kb_entry_content %></label>
+        <textarea name="content" rows="5" required placeholder="<%= t.kb_content_placeholder %>"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary"><%= t.kb_add_btn %></button>
+    </form>
+  </div>
+
+  <!-- URL Input -->
+  <div class="kb-tab-content" id="kbTabUrl">
+    <form method="POST" action="/admin/knowledge/add-url" class="kb-form">
+      <div class="form-group">
+        <label><%= t.kb_url_label %></label>
+        <input type="url" name="url" required placeholder="https://example.com/page">
+      </div>
+      <div class="form-group">
+        <label><%= t.kb_url_title %></label>
+        <input type="text" name="title" placeholder="<%= t.kb_url_title_placeholder %>">
+      </div>
+      <p class="text-muted text-sm"><%= t.kb_url_hint %></p>
+      <button type="submit" class="btn btn-primary"><%= t.kb_import_btn %></button>
+    </form>
+  </div>
+
+  <!-- File Upload -->
+  <div class="kb-tab-content" id="kbTabFile">
+    <form method="POST" action="/admin/knowledge/add-file" enctype="multipart/form-data" class="kb-form">
+      <div class="form-group">
+        <label><%= t.kb_file_label %></label>
+        <input type="file" name="file" required accept=".txt,.md,.csv,.json,.png,.jpg,.jpeg,.gif,.webp,.pdf">
+        <span class="form-hint"><%= t.kb_file_hint %></span>
+      </div>
+      <div class="form-group">
+        <label><%= t.kb_entry_title %></label>
+        <input type="text" name="title" placeholder="<%= t.kb_file_title_placeholder %>">
+      </div>
+      <div class="form-group">
+        <label><%= t.kb_file_instruction %></label>
+        <input type="text" name="instruction" placeholder="<%= t.kb_file_instruction_placeholder %>">
+      </div>
+      <button type="submit" class="btn btn-primary"><%= t.kb_import_btn %></button>
+    </form>
+  </div>
+</div>
+
+<!-- Knowledge Base Entries -->
+<div class="kb-entries">
+  <h3><%= t.kb_existing %></h3>
+  <% entries.forEach(entry => { %>
+    <div class="kb-entry <%= entry.is_active ? '' : 'kb-inactive' %>">
+      <div class="kb-entry-header">
+        <div class="kb-entry-meta">
+          <span class="kb-source-badge kb-source-<%= entry.source_type %>">
+            <%= entry.source_type === 'text' ? '📝' : entry.source_type === 'url' ? '🌐' : entry.source_type === 'image' ? '🖼️' : '📎' %>
+            <%= entry.source_type %>
+          </span>
+          <strong><%= entry.title %></strong>
+        </div>
+        <div class="kb-entry-actions">
+          <span class="text-muted text-sm"><%= entry.author_name %> · <%= new Date(entry.created_at).toLocaleDateString(dateLocale) %></span>
+          <form method="POST" action="/admin/knowledge/<%= entry.id %>/toggle" style="display:inline">
+            <button type="submit" class="btn btn-xs btn-ghost" title="<%= entry.is_active ? t.kb_disable : t.kb_enable %>">
+              <%= entry.is_active ? '✅' : '❌' %>
+            </button>
+          </form>
+          <button class="btn btn-xs btn-ghost" onclick="toggleEditKb(<%= entry.id %>)">✏️</button>
+          <form method="POST" action="/admin/knowledge/<%= entry.id %>/delete" style="display:inline"
+                onsubmit="return confirm('<%= t.kb_delete_confirm %>')">
+            <button type="submit" class="btn btn-xs btn-ghost">🗑️</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="kb-entry-content"><%= entry.content.substring(0, 300) %><%= entry.content.length > 300 ? '...' : '' %></div>
+
+      <% if (entry.source_ref) { %>
+        <div class="kb-entry-source">
+          <% if (entry.source_type === 'url') { %>
+            🔗 <a href="<%= entry.source_ref %>" target="_blank"><%= entry.source_ref %></a>
+          <% } else { %>
+            📄 <%= entry.source_ref %>
+          <% } %>
+        </div>
+      <% } %>
+
+      <!-- Edit form (hidden) -->
+      <form method="POST" action="/admin/knowledge/<%= entry.id %>/update" class="kb-edit-form" id="kbEdit<%= entry.id %>" style="display:none">
+        <div class="form-group">
+          <input type="text" name="title" value="<%= entry.title %>">
+        </div>
+        <div class="form-group">
+          <textarea name="content" rows="4"><%= entry.content %></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="toggleEditKb(<%= entry.id %>)"><%= t.cancel %></button>
+          <button type="submit" class="btn btn-primary btn-sm"><%= t.save %></button>
+        </div>
+      </form>
+    </div>
+  <% }) %>
+  <% if (entries.length === 0) { %>
+    <div class="kb-empty"><%= t.kb_empty %></div>
+  <% } %>
+</div>
+
+<script>
+function switchKbTab(tab) {
+  document.querySelectorAll('.kb-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.kb-tab-content').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('kbTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+}
+function toggleEditKb(id) {
+  const el = document.getElementById('kbEdit' + id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+
+<%- include('../partials/foot') %>

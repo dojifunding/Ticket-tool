@@ -190,6 +190,39 @@ async function initDatabase() {
   db.exec('CREATE INDEX IF NOT EXISTS idx_articles_public ON articles(is_public, is_published)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_articles_slug ON articles(slug)');
 
+  // ─── Knowledge Base Table ───────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS knowledge_base (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL, content TEXT NOT NULL,
+    source_type TEXT NOT NULL CHECK(source_type IN ('text','url','file','image')),
+    source_ref TEXT, added_by INTEGER REFERENCES users(id),
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // ─── Livechat Tables ───────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS chat_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    visitor_token TEXT UNIQUE NOT NULL,
+    visitor_name TEXT, visitor_email TEXT,
+    status TEXT DEFAULT 'ai' CHECK(status IN ('ai','human','closed')),
+    ticket_id INTEGER REFERENCES tickets(id),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.exec(`CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    sender_type TEXT NOT NULL CHECK(sender_type IN ('visitor','ai','agent')),
+    sender_name TEXT, content TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_chat_sessions_token ON chat_sessions(visitor_token)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_chat_sessions_ticket ON chat_sessions(ticket_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id)');
+
   const adminExists = db.prepare('SELECT id FROM users WHERE role = ?').get('admin');
   if (!adminExists) {
     const c = ['#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6','#8b5cf6'];
@@ -258,6 +291,16 @@ async function initDatabase() {
     ];
     articles.forEach(a => {
       db.prepare(`INSERT INTO articles (title,slug,title_en,content,content_en,excerpt,excerpt_en,category_id,is_public,is_published,author_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(...a);
+    });
+
+    // ─── Knowledge Base Seed ────────────────────────
+    const kbEntries = [
+      ['Horaires du support', 'Notre équipe support est disponible du lundi au vendredi, de 9h à 18h (heure de Paris). Les tickets urgents sont traités en priorité. Le temps de réponse moyen est de 2 heures ouvrées.', 'text', null],
+      ['Politique de remboursement', 'Les remboursements sont possibles dans les 30 jours suivant l\'achat. Pour les abonnements annuels, un remboursement au prorata est calculé. Contactez le support avec votre numéro de commande pour initier un remboursement.', 'text', null],
+      ['Fonctionnalités du plan Pro', 'Le plan Pro à 29€/mois inclut : 5 utilisateurs, tickets illimités, support prioritaire (réponse < 4h), rapports avancés, export CSV, intégrations API, personnalisation du portail support, SLA de 99.9% de disponibilité.', 'text', null]
+    ];
+    kbEntries.forEach(k => {
+      db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,1)').run(...k);
     });
   } else {
     console.log('✅ Base de données chargée');

@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { getDb } = require('../database');
+const { getDb, generateTicketRef } = require('../database');
 const { getTranslations, getDateLocale } = require('../i18n');
 
 // Helper: get lang-aware field
@@ -171,6 +171,51 @@ router.get('/api/search', (req, res) => {
   `).all(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
 
   res.json(articles);
+});
+
+// ─── Submit Ticket Form ──────────────────────────────
+router.get('/submit', (req, res) => {
+  const lang = req.session?.lang || 'fr';
+  const t = getTranslations(lang);
+
+  res.render('help/submit', {
+    title: t.help_submit_title,
+    success: false,
+    ticketRef: null,
+    t, dateLocale: getDateLocale(lang), lang,
+    user: req.session?.user || null, currentPath: '/help'
+  });
+});
+
+// ─── Submit Ticket Action ────────────────────────────
+router.post('/submit', (req, res) => {
+  const db = getDb();
+  const lang = req.session?.lang || 'fr';
+  const t = getTranslations(lang);
+
+  const { client_name, client_email, subject, description, category } = req.body;
+
+  if (!client_name || !client_email || !subject || !description) {
+    return res.render('help/submit', {
+      title: t.help_submit_title,
+      success: false, ticketRef: null, error: t.help_submit_error_required,
+      t, dateLocale: getDateLocale(lang), lang,
+      user: req.session?.user || null, currentPath: '/help'
+    });
+  }
+
+  const reference = generateTicketRef();
+  db.prepare(`
+    INSERT INTO tickets (reference, subject, description, category, client_name, client_email, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, 4)
+  `).run(reference, subject, description, category || 'general', client_name, client_email);
+
+  res.render('help/submit', {
+    title: t.help_submit_success,
+    success: true, ticketRef: reference,
+    t, dateLocale: getDateLocale(lang), lang,
+    user: req.session?.user || null, currentPath: '/help'
+  });
 });
 
 module.exports = router;

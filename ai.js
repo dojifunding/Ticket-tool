@@ -11,9 +11,12 @@ function isConfigured() {
 
 async function callClaude(systemPrompt, userMessage, maxTokens = 2000) {
   const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY not configured');
-  }
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+
+  // Support multi-turn: userMessage can be string or messages array
+  const messages = typeof userMessage === 'string'
+    ? [{ role: 'user', content: userMessage }]
+    : userMessage;
 
   const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
@@ -26,7 +29,7 @@ async function callClaude(systemPrompt, userMessage, maxTokens = 2000) {
       model: 'claude-sonnet-4-20250514',
       max_tokens: maxTokens,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }]
+      messages
     })
   });
 
@@ -142,5 +145,122 @@ module.exports = {
   generateArticle,
   generateArticleFromContent,
   suggestTicketReply,
-  improveText
+  improveText,
+  livechatReply,
+  extractFromUrl,
+  analyzeImage
 };
+
+// ─── Livechat AI Agent ───────────────────────────────
+async function livechatReply(chatHistory, knowledgeContext, faqContext, lang = 'fr') {
+  const langLabel = lang === 'en' ? 'English' : 'French';
+  const systemPrompt = `You are a friendly, professional AI support agent for our company's help center. Your name is "Assistant ProjectHub".
+
+Rules:
+- Write in ${langLabel}
+- Be warm, helpful, concise (2-4 sentences per response)
+- Use the KNOWLEDGE BASE and FAQ ARTICLES provided to answer questions accurately
+- If the answer is in the knowledge base or FAQ, provide it directly
+- If you're unsure or the question is complex/specific, suggest the user talk to a human agent
+- Never invent information not in the knowledge base
+- Don't use markdown formatting — write plain text for chat
+- If the user greets you, greet back warmly and ask how you can help
+- End ambiguous answers with "Would you like me to connect you with a human agent?" (in the appropriate language)
+
+KNOWLEDGE BASE:
+${knowledgeContext || 'No specific knowledge available.'}
+
+FAQ ARTICLES:
+${faqContext || 'No FAQ articles available.'}`;
+
+  // Build multi-turn messages from chat history
+  const messages = chatHistory.map(m => ({
+    role: m.sender_type === 'visitor' ? 'user' : 'assistant',
+    content: m.content
+  }));
+
+  return await callClaude(systemPrompt, messages, 500);
+}
+
+// ─── Extract Content from URL ────────────────────────
+async function extractFromUrl(url) {
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'ProjectHub Knowledge Bot/1.0' },
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const html = await response.text();
+
+    // Basic HTML to text conversion
+    let text = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // Truncate to reasonable size
+    if (text.length > 15000) text = text.substring(0, 15000) + '...';
+
+    // If AI is configured, summarize the content
+    if (isConfigured() && text.length > 500) {
+      try {
+        const summary = await callClaude(
+          'You are a content extractor. Summarize the following web page content into clear, structured knowledge that could be used to answer customer questions. Keep all important facts, pricing, features, policies. Remove navigation, ads, and irrelevant content. Output in the same language as the source.',
+          `URL: ${url}\n\nContent:\n${text}`,
+          3000
+        );
+        return { raw: text, processed: summary, url };
+      } catch (e) {
+        return { raw: text, processed: text, url };
+      }
+    }
+    return { raw: text, processed: text, url };
+  } catch (e) {
+    throw new Error(`Failed to fetch URL: ${e.message}`);
+  }
+}
+
+// ─── Analyze Image ───────────────────────────────────
+async function analyzeImage(base64Data, mimeType, instruction) {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+
+  const response = await fetch(ANTHROPIC_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Data } },
+          { type: 'text', text: instruction || 'Extract all text and useful information from this image. Structure it clearly for use as a knowledge base entry.' }
+        ]
+      }]
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Claude Vision API error ${response.status}: ${err}`);
+  }
+
+  const data = await response.json();
+  return data.content[0].text;
+}

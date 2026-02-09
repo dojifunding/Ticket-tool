@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/help.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+  <link rel="stylesheet" href="/css/livechat.css">
 </head>
 <body class="help-body">
   <nav class="help-nav">
@@ -17,6 +18,7 @@
         <span><%= t.help_title %></span>
       </a>
       <div class="help-nav-actions">
+        <a href="/help/submit" class="btn btn-primary btn-sm"><%= t.help_submit_nav %></a>
         <div class="lang-toggle">
           <a href="/lang/fr" class="lang-btn <%= t.lang === 'fr' ? 'active' : '' %>">FR</a>
           <a href="/lang/en" class="lang-btn <%= t.lang === 'en' ? 'active' : '' %>">EN</a>
@@ -68,7 +70,7 @@
 
     <section class="help-contact help-contact-sm">
       <p><%= t.help_still_need_help %></p>
-      <a href="/login" class="btn btn-primary btn-sm"><%= t.help_contact_btn %></a>
+      <a href="/help/submit" class="btn btn-primary btn-sm"><%= t.help_contact_btn %></a>
     </section>
   </main>
 
@@ -80,5 +82,7 @@
     const raw = <%= JSON.stringify(article.displayContent) %>;
     document.getElementById('articleContent').innerHTML = marked.parse(raw);
   </script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/livechat.js"></script>
 </body>
 </html>

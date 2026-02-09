@@ -381,6 +381,71 @@ const translations = {
     ticket_faq_search: 'Rechercher un article...',
     ticket_faq_insert: 'Insérer',
     ticket_faq_ref_prefix: 'Pour plus d\'informations, consultez notre article',
+
+    // ═══════════════════════════════════════════════
+    //  HELP — SUBMIT TICKET
+    // ═══════════════════════════════════════════════
+    help_submit_title: 'Soumettre une demande',
+    help_submit_subtitle: 'Décrivez votre problème et notre équipe vous répondra dans les plus brefs délais.',
+    help_submit_name: 'Votre nom',
+    help_submit_name_placeholder: 'Jean Dupont',
+    help_submit_email: 'Votre email',
+    help_submit_email_placeholder: 'jean@example.com',
+    help_submit_subject: 'Sujet',
+    help_submit_subject_placeholder: 'Ex: Impossible de me connecter à mon compte',
+    help_submit_description: 'Description détaillée',
+    help_submit_desc_placeholder: 'Décrivez votre problème en détail : ce que vous avez fait, ce qu\'il s\'est passé, le message d\'erreur éventuel...',
+    help_submit_btn: 'Envoyer la demande',
+    help_submit_error_required: 'Veuillez remplir tous les champs obligatoires.',
+    help_submit_success: 'Demande envoyée !',
+    help_submit_success_text: 'Votre demande a bien été reçue. Notre équipe la traitera dans les plus brefs délais.',
+    help_submit_success_email: 'Vous recevrez une réponse à l\'adresse email indiquée.',
+    help_submit_ref: 'Numéro de référence :',
+    help_submit_another: 'Nouvelle demande',
+    help_submit_faq_hint: 'Avant d\'envoyer, avez-vous consulté notre base de connaissances ?',
+    help_submit_browse_faq: '📚 Parcourir les articles d\'aide',
+    help_submit_nav: 'Soumettre une demande',
+
+    // ═══════════════════════════════════════════════
+    //  KNOWLEDGE BASE
+    // ═══════════════════════════════════════════════
+    nav_knowledge: 'Base de connaissances',
+    kb_title: 'Base de connaissances IA',
+    kb_count: 'entrée(s)',
+    kb_ai_hint: '💡 L\'IA utilise cette base pour répondre aux visiteurs du livechat. Plus vous ajoutez d\'informations, plus les réponses seront précises.',
+    kb_add_text: 'Texte',
+    kb_add_url: 'URL',
+    kb_add_file: 'Fichier',
+    kb_entry_title: 'Titre',
+    kb_title_placeholder: 'Ex: Politique de remboursement',
+    kb_entry_content: 'Contenu',
+    kb_content_placeholder: 'Saisissez les informations que l\'IA doit connaître...',
+    kb_add_btn: 'Ajouter',
+    kb_url_label: 'URL de la page web',
+    kb_url_title: 'Titre (optionnel)',
+    kb_url_title_placeholder: 'Sera généré automatiquement si vide',
+    kb_url_hint: 'L\'IA va récupérer et analyser le contenu de la page web.',
+    kb_import_btn: 'Importer',
+    kb_file_label: 'Fichier à importer',
+    kb_file_hint: 'Formats : .txt, .md, .csv, .json, .png, .jpg, .gif, .webp, .pdf',
+    kb_file_title_placeholder: 'Nom du fichier utilisé si vide',
+    kb_file_instruction: 'Instruction pour l\'IA (images)',
+    kb_file_instruction_placeholder: 'Ex: Extraire les tarifs et conditions de cette image',
+    kb_existing: 'Connaissances existantes',
+    kb_enable: 'Activer',
+    kb_disable: 'Désactiver',
+    kb_delete_confirm: 'Supprimer cette entrée ?',
+    kb_empty: 'Aucune connaissance ajoutée. Commencez à alimenter l\'IA !',
+
+    // ═══════════════════════════════════════════════
+    //  LIVECHAT
+    // ═══════════════════════════════════════════════
+    chat_welcome_msg: 'Bonjour ! 👋 Je suis l\'assistant IA de ProjectHub. Comment puis-je vous aider aujourd\'hui ?',
+    chat_ai_error: 'Désolé, je rencontre un problème technique. Souhaitez-vous être mis en relation avec un agent humain ?',
+    chat_escalated_msg: '✅ Vous êtes maintenant connecté au support. Un agent va prendre en charge votre conversation.',
+    chat_ticket_desc: 'Conversation livechat transférée à un agent humain.',
+    chat_ticket_history: 'Historique de la conversation',
+    chat_livechat_badge: '💬 Livechat',
   },
 
   // ═══════════════════════════════════════════════════
@@ -761,6 +826,71 @@ const translations = {
     ticket_faq_search: 'Search an article...',
     ticket_faq_insert: 'Insert',
     ticket_faq_ref_prefix: 'For more information, see our article',
+
+    // ═══════════════════════════════════════════════
+    //  HELP — SUBMIT TICKET
+    // ═══════════════════════════════════════════════
+    help_submit_title: 'Submit a request',
+    help_submit_subtitle: 'Describe your issue and our team will get back to you as soon as possible.',
+    help_submit_name: 'Your name',
+    help_submit_name_placeholder: 'John Smith',
+    help_submit_email: 'Your email',
+    help_submit_email_placeholder: 'john@example.com',
+    help_submit_subject: 'Subject',
+    help_submit_subject_placeholder: 'E.g.: Unable to log into my account',
+    help_submit_description: 'Detailed description',
+    help_submit_desc_placeholder: 'Describe your issue in detail: what you did, what happened, any error messages...',
+    help_submit_btn: 'Submit request',
+    help_submit_error_required: 'Please fill in all required fields.',
+    help_submit_success: 'Request submitted!',
+    help_submit_success_text: 'Your request has been received. Our team will handle it as soon as possible.',
+    help_submit_success_email: 'You will receive a response at the email address provided.',
+    help_submit_ref: 'Reference number:',
+    help_submit_another: 'New request',
+    help_submit_faq_hint: 'Before submitting, have you checked our knowledge base?',
+    help_submit_browse_faq: '📚 Browse help articles',
+    help_submit_nav: 'Submit a request',
+
+    // ═══════════════════════════════════════════════
+    //  KNOWLEDGE BASE
+    // ═══════════════════════════════════════════════
+    nav_knowledge: 'Knowledge Base',
+    kb_title: 'AI Knowledge Base',
+    kb_count: 'entry(ies)',
+    kb_ai_hint: '💡 The AI uses this knowledge base to answer livechat visitors. The more information you add, the more accurate the responses.',
+    kb_add_text: 'Text',
+    kb_add_url: 'URL',
+    kb_add_file: 'File',
+    kb_entry_title: 'Title',
+    kb_title_placeholder: 'E.g.: Refund policy',
+    kb_entry_content: 'Content',
+    kb_content_placeholder: 'Enter the information the AI should know...',
+    kb_add_btn: 'Add',
+    kb_url_label: 'Web page URL',
+    kb_url_title: 'Title (optional)',
+    kb_url_title_placeholder: 'Will be auto-generated if empty',
+    kb_url_hint: 'The AI will fetch and analyze the web page content.',
+    kb_import_btn: 'Import',
+    kb_file_label: 'File to import',
+    kb_file_hint: 'Formats: .txt, .md, .csv, .json, .png, .jpg, .gif, .webp, .pdf',
+    kb_file_title_placeholder: 'Filename used if empty',
+    kb_file_instruction: 'AI instruction (images)',
+    kb_file_instruction_placeholder: 'E.g.: Extract pricing and conditions from this image',
+    kb_existing: 'Existing knowledge',
+    kb_enable: 'Enable',
+    kb_disable: 'Disable',
+    kb_delete_confirm: 'Delete this entry?',
+    kb_empty: 'No knowledge added yet. Start feeding the AI!',
+
+    // ═══════════════════════════════════════════════
+    //  LIVECHAT
+    // ═══════════════════════════════════════════════
+    chat_welcome_msg: 'Hello! 👋 I\'m ProjectHub\'s AI assistant. How can I help you today?',
+    chat_ai_error: 'Sorry, I\'m having a technical issue. Would you like to be connected with a human agent?',
+    chat_escalated_msg: '✅ You are now connected to support. An agent will handle your conversation shortly.',
+    chat_ticket_desc: 'Livechat conversation transferred to a human agent.',
+    chat_ticket_history: 'Conversation history',
+    chat_livechat_badge: '💬 Livechat',
   }
 };
 

@@ -7,6 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/help.css">
+  <link rel="stylesheet" href="/css/livechat.css">
 </head>
 <body class="help-body">
   <nav class="help-nav">
@@ -16,6 +17,7 @@
         <span><%= t.help_title %></span>
       </a>
       <div class="help-nav-actions">
+        <a href="/help/submit" class="btn btn-primary btn-sm"><%= t.help_submit_nav %></a>
         <div class="lang-toggle">
           <a href="/lang/fr" class="lang-btn <%= t.lang === 'fr' ? 'active' : '' %>">FR</a>
           <a href="/lang/en" class="lang-btn <%= t.lang === 'en' ? 'active' : '' %>">EN</a>
@@ -63,5 +65,7 @@
   <footer class="help-footer">
     <p>© <%= new Date().getFullYear() %> ProjectHub — <%= t.help_footer %></p>
   </footer>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/livechat.js"></script>
 </body>
 </html>

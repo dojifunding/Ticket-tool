@@ -5,6 +5,7 @@
     <a href="/tickets" class="back-link"><%= t.ticket_back %></a>
     <div class="ticket-detail-title">
       <span class="ticket-ref-lg"><%= ticket.reference %></span>
+      <% if (chatSession) { %><span class="livechat-badge"><%= t.chat_livechat_badge %></span><% } %>
       <h1 class="page-title"><%= ticket.subject %></h1>
     </div>
   </div>

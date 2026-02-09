@@ -453,3 +453,227 @@
   .help-article-header h1 { font-size: 1.3rem; }
   .header-btns { flex-wrap: wrap; }
 }
+
+/* ─── Submit Ticket Form ──────────────────────────── */
+.help-submit-form {
+  max-width: 700px;
+  margin: 0 auto;
+}
+.help-submit-header {
+  margin-bottom: 1.5rem;
+}
+.help-submit-header h1 {
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin-bottom: 0.4rem;
+}
+.help-submit-header p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+.help-submit-faq-hint {
+  text-align: center;
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.help-submit-faq-hint a {
+  display: inline-block;
+  margin-top: 0.4rem;
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+.help-submit-faq-hint a:hover { text-decoration: underline; }
+
+/* ─── Success State ───────────────────────────────── */
+.help-submit-success {
+  max-width: 550px;
+  margin: 3rem auto;
+  text-align: center;
+}
+.success-icon {
+  font-size: 3.5rem;
+  margin-bottom: 1rem;
+}
+.help-submit-success h1 {
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+}
+.help-submit-success p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+.ticket-ref-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--bg-secondary);
+  border: 2px solid var(--primary);
+  border-radius: 10px;
+  padding: 1rem 1.5rem;
+  margin: 1.5rem 0;
+}
+.ticket-ref-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.ticket-ref-value {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--primary);
+  font-family: monospace;
+}
+.success-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+/* ═══════════════════════════════════════════════════════
+   KNOWLEDGE BASE — Admin Styles
+   ═══════════════════════════════════════════════════════ */
+.kb-add-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  margin-bottom: 2rem;
+}
+.kb-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  padding: 3px;
+  margin-bottom: 1rem;
+}
+.kb-tab {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.kb-tab.active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.kb-tab-content { display: none; }
+.kb-tab-content.active { display: block; }
+.kb-form { display: flex; flex-direction: column; gap: 0.75rem; }
+.kb-form .btn { align-self: flex-start; }
+
+.kb-entries { margin-top: 1rem; }
+.kb-entries h3 { font-size: 1rem; margin-bottom: 0.75rem; }
+.kb-entry {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  transition: opacity 0.2s;
+}
+.kb-inactive { opacity: 0.5; }
+.kb-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+.kb-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.kb-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.kb-source-text { background: #dbeafe; color: #1e40af; }
+.kb-source-url { background: #dcfce7; color: #166534; }
+.kb-source-file { background: #fef3c7; color: #92400e; }
+.kb-source-image { background: #f3e8ff; color: #6b21a8; }
+.kb-entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.kb-entry-content {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+.kb-entry-source {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.kb-entry-source a { color: var(--primary); }
+.kb-edit-form {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+.kb-empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* ─── Livechat Badge (Ticket Detail) ──────────────── */
+.livechat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+  animation: lc-pulse 2s infinite;
+}
+@keyframes lc-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+}
+
+/* ─── Alert Error ─────────────────────────────────── */
+.alert-error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}

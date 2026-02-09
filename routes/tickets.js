@@ -123,7 +123,10 @@ router.get('/:id', (req, res) => {
   // Projects for escalation dropdown
   const projects = db.prepare('SELECT id, name, code FROM projects WHERE status = ?').all('active');
 
-  res.render('tickets/detail', { ticket, messages, agents, escalatedTask, projects, title: `${ticket.reference} — ${ticket.subject}` });
+  // Check if ticket has a livechat session
+  const chatSession = db.prepare('SELECT * FROM chat_sessions WHERE ticket_id = ?').get(ticket.id);
+
+  res.render('tickets/detail', { ticket, messages, agents, escalatedTask, projects, chatSession: chatSession || null, title: `${ticket.reference} — ${ticket.subject}` });
 });
 
 // ─── Update Ticket ───────────────────────────────────

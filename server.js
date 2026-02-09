@@ -42,9 +42,11 @@ app.set('io', io);
 app.use('/', require('./routes/auth'));
 app.use('/projects', require('./routes/projects'));
 app.use('/tickets', require('./routes/tickets'));
-app.use('/admin', require('./routes/admin'));
 app.use('/admin/articles', require('./routes/articles'));
+app.use('/admin/knowledge', require('./routes/knowledge'));
+app.use('/admin', require('./routes/admin'));
 app.use('/help', require('./routes/help'));
+app.use('/api/chat', require('./routes/chat'));
 app.use('/api', require('./routes/api'));
 
 // ─── Error page ──────────────────────────────────────
@@ -70,15 +72,53 @@ app.use((err, req, res, next) => {
 
 // ─── Socket.io ───────────────────────────────────────
 const onlineUsers = new Map();
+const livechatSockets = new Map(); // token -> socketId
 
 io.on('connection', (socket) => {
   const sess = socket.request.session;
   const user = sess?.user;
 
-  if (!user) {
-    socket.disconnect();
-    return;
-  }
+  // ─── Livechat visitor (unauthenticated) ──────────
+  socket.on('livechat:join', (token) => {
+    if (!token) return;
+    livechatSockets.set(token, socket.id);
+    socket.join(`livechat-${token}`);
+  });
+
+  socket.on('livechat:leave', (token) => {
+    livechatSockets.delete(token);
+    socket.leave(`livechat-${token}`);
+  });
+
+  // ─── Staff: reply to livechat from ticket ────────
+  socket.on('livechat:agentReply', (data) => {
+    if (!user) return;
+    try {
+      const db = getDb();
+      const { ticketId, content } = data;
+
+      // Find the chat session linked to this ticket
+      const session = db.prepare('SELECT * FROM chat_sessions WHERE ticket_id = ? AND status = ?').get(ticketId, 'human');
+      if (!session) return;
+
+      // Save message in chat_messages
+      db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
+        .run(session.id, 'agent', user.full_name, content);
+
+      // Push to visitor in real-time
+      io.to(`livechat-${session.visitor_token}`).emit('livechat:newMessage', {
+        sender_type: 'agent',
+        sender_name: user.full_name,
+        content,
+        created_at: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error('[Socket] livechat:agentReply error:', e.message);
+    }
+  });
+
+  // ─── Authenticated user handlers ─────────────────
+  if (!user) return; // Don't disconnect — visitor may need livechat
 
   // Track online status
   onlineUsers.set(user.id, { socketId: socket.id, user });
@@ -177,6 +217,7 @@ io.on('connection', (socket) => {
 
   // ─── Chat messages in tickets ───────────────────
   socket.on('ticket:message', (data) => {
+    if (!user) return;
     try {
       const db = getDb();
       const ticketId = Number(data.ticketId);
@@ -205,6 +246,24 @@ io.on('connection', (socket) => {
           '/tickets/' + ticketId
         );
         io.to('user-' + ticket.assigned_to).emit('notification:new');
+      }
+
+      // ─── LIVECHAT RELAY: push non-internal messages to visitor ───
+      if (!isInternal) {
+        const chatSession = db.prepare('SELECT * FROM chat_sessions WHERE ticket_id = ? AND status = ?').get(ticketId, 'human');
+        if (chatSession) {
+          // Save in chat_messages too
+          db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
+            .run(chatSession.id, 'agent', user.full_name, content);
+
+          // Push to visitor via Socket.io
+          io.to(`livechat-${chatSession.visitor_token}`).emit('livechat:newMessage', {
+            sender_type: 'agent',
+            sender_name: user.full_name,
+            content,
+            created_at: new Date().toISOString()
+          });
+        }
       }
     } catch (e) {
       console.error('[Socket] ticket:message error:', e.message);
@@ -247,8 +306,14 @@ io.on('connection', (socket) => {
 
   // ─── Disconnect ─────────────────────────────────
   socket.on('disconnect', () => {
-    onlineUsers.delete(user.id);
-    io.emit('users:online', Array.from(onlineUsers.values()).map(u => u.user));
+    if (user) {
+      onlineUsers.delete(user.id);
+      io.emit('users:online', Array.from(onlineUsers.values()).map(u => u.user));
+    }
+    // Clean livechat sockets
+    for (const [token, sid] of livechatSockets.entries()) {
+      if (sid === socket.id) { livechatSockets.delete(token); break; }
+    }
   });
 });
 
