@@ -388,8 +388,8 @@ async function generateFromKB(kbEntries, lang = 'fr', categoryList = '') {
 
   console.log('[AI] KB total: ' + sections.length + ' sections from ' + kbEntries.length + ' entries');
 
-  // ─── Step 2: Batch sections & call AI for each ───
-  const BATCH_SIZE = 4; // Smaller batches = more focused articles
+  // ─── Step 2: Batch sections & call AI in PARALLEL ───
+  const BATCH_SIZE = 6; // More sections per batch = fewer API calls
   const batches = [];
   for (let i = 0; i < sections.length; i += BATCH_SIZE) {
     batches.push(sections.slice(i, i + BATCH_SIZE));
@@ -411,30 +411,39 @@ RULES:
 - NO text outside the JSON`;
 
   const allArticles = [];
+  const maxBatches = Math.min(batches.length, 8);
 
-  // Process batches (max 10 to cover ~40 sections of a large doc)
-  const maxBatches = Math.min(batches.length, 10);
-  for (let b = 0; b < maxBatches; b++) {
+  // Helper: process one batch
+  async function processBatch(b) {
     const batch = batches[b];
     let batchText = '';
     batch.forEach((s, i) => {
-      const text = s.text.substring(0, 2500);
-      batchText += `--- SECTION ${i + 1} (${s.source}) ---\n${text}\n\n`;
+      batchText += `--- SECTION ${i + 1} (${s.source}) ---\n${s.text.substring(0, 2000)}\n\n`;
     });
-
-    console.log('[AI] KB batch', b + 1, '/', maxBatches, '—', batchText.length, 'chars,', batch.length, 'sections');
-
-    try {
-      const result = await callClaude(systemPrompt, `Generate FAQ articles from these sections:\n\n${batchText}`, 3000);
-      const clean = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const articles = JSON.parse(clean);
-      if (Array.isArray(articles)) {
-        allArticles.push(...articles.filter(a => a.title && a.content));
-        console.log('[AI] KB batch', b + 1, '→', articles.length, 'articles');
-      }
-    } catch (e) {
-      console.error('[AI] KB batch', b + 1, 'error:', e.message);
+    console.log('[AI] KB batch', b + 1, '/', maxBatches, '—', batchText.length, 'chars');
+    const result = await callClaude(systemPrompt, `Generate FAQ articles from these sections:\n\n${batchText}`, 3000, 60000);
+    const clean = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const articles = JSON.parse(clean);
+    if (Array.isArray(articles)) {
+      const valid = articles.filter(a => a.title && a.content);
+      console.log('[AI] KB batch', b + 1, '→', valid.length, 'articles');
+      return valid;
     }
+    return [];
+  }
+
+  // Run batches in parallel, 3 at a time
+  const CONCURRENCY = 3;
+  for (let start = 0; start < maxBatches; start += CONCURRENCY) {
+    const chunk = [];
+    for (let b = start; b < Math.min(start + CONCURRENCY, maxBatches); b++) {
+      chunk.push(processBatch(b).catch(e => {
+        console.error('[AI] KB batch', b + 1, 'error:', e.message);
+        return [];
+      }));
+    }
+    const results = await Promise.all(chunk);
+    results.forEach(r => allArticles.push(...r));
   }
 
   console.log('[AI] KB generation complete:', allArticles.length, 'articles from', maxBatches, 'batches');
