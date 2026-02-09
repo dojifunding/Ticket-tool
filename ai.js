@@ -1,8 +1,13 @@
 // ─── AI Service — Anthropic Claude Integration ──────
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+const DEFAULT_MODEL = 'claude-sonnet-4-5-20250929';
 
 function getApiKey() {
   return process.env.ANTHROPIC_API_KEY || null;
+}
+
+function getModel() {
+  return process.env.CLAUDE_MODEL || DEFAULT_MODEL;
 }
 
 function isConfigured() {
@@ -18,6 +23,10 @@ async function callClaude(systemPrompt, userMessage, maxTokens = 2000) {
     ? [{ role: 'user', content: userMessage }]
     : userMessage;
 
+  const model = getModel();
+  console.log('[AI] Calling Claude — model:', model, ', messages:', messages.length, ', maxTokens:', maxTokens);
+  console.log('[AI] First msg role:', messages[0]?.role, ', system length:', systemPrompt.length);
+
   const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
     headers: {
@@ -26,15 +35,17 @@ async function callClaude(systemPrompt, userMessage, maxTokens = 2000) {
       'anthropic-version': '2023-06-01'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model,
       max_tokens: maxTokens,
       system: systemPrompt,
       messages
-    })
+    }),
+    signal: AbortSignal.timeout(25000) // 25s timeout (Render free = 30s)
   });
 
   if (!response.ok) {
     const err = await response.text();
+    console.error('[AI] API error:', response.status, err.substring(0, 300));
     // Parse API error for user-friendly messages
     try {
       const errData = JSON.parse(err);
@@ -48,14 +59,18 @@ async function callClaude(systemPrompt, userMessage, maxTokens = 2000) {
       if (msg.includes('rate_limit') || response.status === 429) {
         throw new Error('RATE_LIMIT: Trop de requêtes. Réessayez dans quelques secondes.');
       }
+      if (msg.includes('not_found') || msg.includes('model')) {
+        throw new Error('MODEL: Modèle non trouvé. Vérifiez votre accès API.');
+      }
       throw new Error(msg);
     } catch (parseErr) {
-      if (parseErr.message.startsWith('BILLING:') || parseErr.message.startsWith('AUTH:') || parseErr.message.startsWith('RATE_LIMIT:')) throw parseErr;
+      if (parseErr.message.startsWith('BILLING:') || parseErr.message.startsWith('AUTH:') || parseErr.message.startsWith('RATE_LIMIT:') || parseErr.message.startsWith('MODEL:')) throw parseErr;
       throw new Error(`Claude API error ${response.status}: ${err.substring(0, 200)}`);
     }
   }
 
   const data = await response.json();
+  console.log('[AI] ✅ Response received:', data.content?.[0]?.text?.substring(0, 60));
   return data.content[0].text;
 }
 
@@ -232,24 +247,19 @@ async function extractFromUrl(url) {
   const { scrapeUrl } = require('./scraper');
 
   const result = await scrapeUrl(url);
-  const text = result.text;
+  let text = result.text;
 
   console.log('[KB] Extracted', text.length, 'chars via', result.method, 'from', url);
 
-  // Summarize with AI if available and text is substantial
-  if (isConfigured() && text.length > 200) {
-    try {
-      const summary = await callClaude(
-        'You are a content extractor. Summarize the following web page content into clear, structured knowledge that could be used to answer customer questions. Keep ALL important facts, pricing, features, policies, rules, conditions. Remove navigation, ads, and irrelevant content. Output in the same language as the source. If the content is already well-structured, keep it mostly as-is.',
-        `URL: ${url}\n\nExtracted page content:\n${text}`,
-        3000
-      );
-      return { raw: text, processed: summary, url, method: result.method };
-    } catch (e) {
-      console.error('[KB] AI summarization failed, using raw text:', e.message);
-      return { raw: text, processed: text, url, method: result.method };
-    }
-  }
+  // For KB: keep the full raw text — don't summarize (avoids losing information)
+  // Just clean up formatting artifacts
+  text = text
+    .replace(/\n{4,}/g, '\n\n')       // Collapse excessive newlines
+    .replace(/[ \t]{3,}/g, ' ')         // Collapse excessive spaces
+    .trim();
+
+  // Store up to 20K chars of raw content
+  if (text.length > 20000) text = text.substring(0, 20000) + '\n...(contenu tronqué)';
 
   return { raw: text, processed: text, url, method: result.method };
 }

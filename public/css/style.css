@@ -1327,27 +1327,35 @@ input, select, textarea, button {
 .comment-form,
 .message-form {
   margin-top: 16px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
 }
 
 .comment-input-wrapper,
 .message-input-wrapper {
+  flex: 1;
   display: flex;
-  gap: 10px;
-  align-items: flex-end;
+  flex-direction: column;
+  gap: 8px;
 }
 .comment-input-wrapper textarea,
 .message-input-wrapper textarea {
-  flex: 1;
+  width: 100%;
   padding: 10px 14px;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text-primary);
-  resize: none;
+  resize: vertical;
   outline: none;
-  min-height: 44px;
-  max-height: 120px;
-  transition: border-color var(--transition);
+  min-height: 80px;
+  max-height: 300px;
+  overflow-y: auto;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  transition: border-color var(--transition), height 0.15s ease;
 }
 .comment-input-wrapper textarea:focus,
 .message-input-wrapper textarea:focus {
@@ -1357,7 +1365,9 @@ input, select, textarea, button {
 .message-actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .internal-toggle {

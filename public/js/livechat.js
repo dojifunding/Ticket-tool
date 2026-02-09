@@ -291,23 +291,44 @@
     }
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000); // 25s client timeout
+
       const res = await fetch('/api/chat/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: state.token, content })
+        body: JSON.stringify({ token: state.token, content }),
+        signal: controller.signal
       });
+      clearTimeout(timeout);
       const data = await res.json();
 
       document.getElementById('lc-typing').style.display = 'none';
 
-      if (data.ok && data.aiMessage) {
+      if (data.aiMessage) {
         state.messages.push(data.aiMessage);
         appendMessageDOM(data.aiMessage);
+        scrollToBottom();
+      } else if (data.error) {
+        const errMsg = { sender_type: 'ai', sender_name: 'System', content: '⚠️ ' + data.error, created_at: new Date().toISOString() };
+        state.messages.push(errMsg);
+        appendMessageDOM(errMsg);
         scrollToBottom();
       }
     } catch (e) {
       console.error('[Livechat] Send error:', e);
       document.getElementById('lc-typing').style.display = 'none';
+      // Show error to user instead of silently failing
+      const errMsg = {
+        sender_type: 'ai', sender_name: 'System',
+        content: e.name === 'AbortError'
+          ? (state.lang === 'fr' ? '⏳ La réponse prend trop de temps. Essayez de reformuler ou parlez à un humain.' : '⏳ Response is taking too long. Try rephrasing or talk to a human.')
+          : (state.lang === 'fr' ? '⚠️ Erreur de connexion. Réessayez.' : '⚠️ Connection error. Please retry.'),
+        created_at: new Date().toISOString()
+      };
+      state.messages.push(errMsg);
+      appendMessageDOM(errMsg);
+      scrollToBottom();
     }
 
     input.focus();

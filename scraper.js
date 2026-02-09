@@ -140,7 +140,7 @@ async function scrapeUrl(url) {
   let text = await fetchWithJina(url);
   if (text && text.length > 80) {
     console.log('[Scraper] ✅ Jina:', text.length, 'chars');
-    if (text.length > 15000) text = text.substring(0, 15000) + '...';
+    if (text.length > 25000) text = text.substring(0, 25000) + '...';
     return { text, method: 'jina' };
   }
 
@@ -148,7 +148,7 @@ async function scrapeUrl(url) {
   text = await fetchWithBotUA(url);
   if (text && text.length > 80) {
     console.log('[Scraper] ✅ Bot UA:', text.length, 'chars');
-    if (text.length > 15000) text = text.substring(0, 15000) + '...';
+    if (text.length > 25000) text = text.substring(0, 25000) + '...';
     return { text, method: 'bot-ua' };
   }
 
@@ -156,7 +156,7 @@ async function scrapeUrl(url) {
   text = await fetchWithBrowserUA(url);
   if (text && text.length > 80) {
     console.log('[Scraper] ✅ Browser UA:', text.length, 'chars');
-    if (text.length > 15000) text = text.substring(0, 15000) + '...';
+    if (text.length > 25000) text = text.substring(0, 25000) + '...';
     return { text, method: 'http' };
   }
 

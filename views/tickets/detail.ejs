@@ -216,6 +216,14 @@ if (typeof io !== 'undefined') {
 document.getElementById('messageInput').addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'Enter') sendMessage(); });
 
 // ─── AI Suggest Reply ────────────────────────────────
+// ─── Auto-resize textarea ────────────────────────────
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(Math.max(el.scrollHeight, 80), 300) + 'px';
+}
+const msgInput = document.getElementById('messageInput');
+msgInput.addEventListener('input', () => autoResize(msgInput));
+
 async function aiSuggestReply() {
   const btn = document.getElementById('aiSuggestBtn');
   btn.disabled = true;
@@ -228,6 +236,7 @@ async function aiSuggestReply() {
     const data = await res.json();
     if (data.ok) {
       document.getElementById('messageInput').value = data.suggestion;
+      autoResize(document.getElementById('messageInput'));
       document.getElementById('messageInput').focus();
     } else {
       alert(data.error || 'AI not configured');

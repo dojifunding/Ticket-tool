@@ -98,19 +98,24 @@ router.post('/message', async (req, res) => {
   // AI mode: generate response
   if (session.status === 'ai' && ai.isConfigured()) {
     try {
-      // Gather knowledge base context
+      // Gather knowledge base context (truncate to avoid timeout)
       const kbEntries = db.prepare('SELECT title, content FROM knowledge_base WHERE is_active=1').all();
-      const knowledgeContext = kbEntries.map(k => `[${k.title}]: ${k.content}`).join('\n\n');
+      let knowledgeContext = '';
+      for (const k of kbEntries) {
+        const entry = `[${k.title}]: ${k.content.substring(0, 2000)}\n\n`;
+        if (knowledgeContext.length + entry.length > 8000) break; // Cap total context
+        knowledgeContext += entry;
+      }
 
-      // Gather FAQ articles context
-      const faqArticles = db.prepare('SELECT title, content FROM articles WHERE is_published=1 AND is_public=1').all();
-      const faqContext = faqArticles.map(a => `[${a.title}]: ${a.content.substring(0, 500)}`).join('\n\n');
+      // Gather FAQ articles context (limited)
+      const faqArticles = db.prepare('SELECT title, content FROM articles WHERE is_published=1 AND is_public=1 LIMIT 5').all();
+      const faqContext = faqArticles.map(a => `[${a.title}]: ${a.content.substring(0, 300)}`).join('\n\n');
 
-      // Get chat history
-      const history = db.prepare('SELECT sender_type, content FROM chat_messages WHERE session_id=? ORDER BY created_at ASC').all(session.id);
+      // Get chat history (last 10 messages only)
+      const history = db.prepare('SELECT sender_type, content FROM chat_messages WHERE session_id=? ORDER BY created_at DESC LIMIT 10').all(session.id).reverse();
 
       const lang = req.session?.lang || 'fr';
-      console.log('[Chat] AI request — KB:', kbEntries.length, 'entries, FAQ:', faqArticles.length, 'articles, History:', history.length, 'msgs');
+      console.log('[Chat] AI request — KB:', kbEntries.length, 'entries (' + knowledgeContext.length + ' chars), FAQ:', faqArticles.length, ', History:', history.length);
 
       const aiResponse = await ai.livechatReply(history, knowledgeContext, faqContext, lang);
 
@@ -118,22 +123,30 @@ router.post('/message', async (req, res) => {
       db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
         .run(session.id, 'ai', 'Assistant', aiResponse);
 
-      console.log('[Chat] AI responded:', aiResponse.substring(0, 80) + '...');
+      console.log('[Chat] AI responded:', aiResponse.substring(0, 80));
       return res.json({ ok: true, mode: 'ai', aiMessage: { sender_type: 'ai', sender_name: 'Assistant', content: aiResponse, created_at: new Date().toISOString() } });
     } catch (e) {
       console.error('[Chat] AI error:', e.message);
       const lang = req.session?.lang || 'fr';
       const t = getTranslations(lang);
-      const fallback = t.chat_ai_error;
+      const fallback = e.message.startsWith('BILLING:')
+        ? (lang === 'fr' ? 'Service temporairement indisponible. Souhaitez-vous parler à un agent ?' : 'Service temporarily unavailable. Would you like to speak with an agent?')
+        : t.chat_ai_error;
       db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
         .run(session.id, 'ai', 'Assistant', fallback);
       return res.json({ ok: true, mode: 'ai', aiMessage: { sender_type: 'ai', sender_name: 'Assistant', content: fallback, created_at: new Date().toISOString() } });
     }
   }
 
-  // AI not configured
-  console.log('[Chat] AI not configured — message saved without response');
-  res.json({ ok: true, mode: session.status });
+  // AI not configured — still return a message so the user isn't left hanging
+  console.log('[Chat] AI not configured — returning fallback');
+  const lang = req.session?.lang || 'fr';
+  const fallbackMsg = lang === 'fr'
+    ? 'L\'IA n\'est pas configurée pour le moment. Cliquez sur "Parler à un humain" pour contacter un agent.'
+    : 'AI is not configured. Click "Talk to a human" to contact an agent.';
+  db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
+    .run(session.id, 'ai', 'Assistant', fallbackMsg);
+  res.json({ ok: true, mode: session.status, aiMessage: { sender_type: 'ai', sender_name: 'Assistant', content: fallbackMsg, created_at: new Date().toISOString() } });
 });
 
 // ─── Escalate to Human ──────────────────────────────
