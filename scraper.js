@@ -30,13 +30,10 @@ async function fetchWithJina(url) {
     let text = await response.text();
     if (!text || text.trim().length < 50) return null;
 
-    // Clean up Jina output (remove markdown images, links formatting)
+    // Clean up Jina output — keep structure markers for KB splitting
     text = text
       .replace(/!\[.*?\]\(.*?\)/g, '')           // Remove markdown images
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1') // [text](url) → text
-      .replace(/^#+\s*/gm, '')                    // Remove markdown headers markers
-      .replace(/\*\*([^*]+)\*\*/g, '$1')          // **bold** → bold
-      .replace(/\*([^*]+)\*/g, '$1')              // *italic* → italic
       .replace(/\n{3,}/g, '\n\n')                 // Collapse multiple newlines
       .trim();
 

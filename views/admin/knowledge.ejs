@@ -136,6 +136,12 @@
             </button>
           </form>
           <button class="btn btn-xs btn-ghost" onclick="toggleEditKb(<%= entry.id %>)">✏️</button>
+          <% if (entry.source_type === 'url') { %>
+            <form method="POST" action="/admin/knowledge/<%= entry.id %>/rescrape" style="display:inline"
+                  onsubmit="this.querySelector('button').textContent='⏳';this.querySelector('button').disabled=true">
+              <button type="submit" class="btn btn-xs btn-ghost" title="Re-scraper l'URL">🔄</button>
+            </form>
+          <% } %>
           <form method="POST" action="/admin/knowledge/<%= entry.id %>/delete" style="display:inline"
                 onsubmit="return confirm('<%= t.kb_delete_confirm %>')">
             <button type="submit" class="btn btn-xs btn-ghost">🗑️</button>
@@ -143,7 +149,7 @@
         </div>
       </div>
 
-      <div class="kb-entry-content"><%= entry.content.substring(0, 300) %><%= entry.content.length > 300 ? '...' : '' %></div>
+      <div class="kb-entry-content"><%= entry.content.substring(0, 300) %><%= entry.content.length > 300 ? '...' : '' %> <span class="text-muted text-sm">(<%= (entry.content.length / 1000).toFixed(1) %>K chars)</span></div>
 
       <% if (entry.source_ref) { %>
         <div class="kb-entry-source">

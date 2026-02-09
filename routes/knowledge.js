@@ -230,6 +230,26 @@ router.post('/:id/toggle', (req, res) => {
   res.redirect('/admin/knowledge');
 });
 
+// ─── Re-scrape URL KB Entry ─────────────────────────
+router.post('/:id/rescrape', async (req, res) => {
+  const db = getDb();
+  const entry = db.prepare('SELECT * FROM knowledge_base WHERE id=?').get(req.params.id);
+  if (!entry || entry.source_type !== 'url' || !entry.source_ref) {
+    req.session._kbFlash = { type: 'error', message: 'Entrée non-URL ou introuvable.' };
+    return res.redirect('/admin/knowledge');
+  }
+
+  try {
+    const ai = require('../ai');
+    const data = await ai.extractFromUrl(entry.source_ref);
+    db.prepare('UPDATE knowledge_base SET content=?, created_at=CURRENT_TIMESTAMP WHERE id=?').run(data.processed, entry.id);
+    req.session._kbFlash = { type: 'success', message: `✅ Re-scrapé: ${data.processed.length} chars (${data.method})` };
+  } catch (e) {
+    req.session._kbFlash = { type: 'error', message: `❌ Erreur: ${e.message}` };
+  }
+  res.redirect('/admin/knowledge');
+});
+
 router.post('/:id/delete', (req, res) => {
   const db = getDb();
   db.prepare('DELETE FROM knowledge_base WHERE id=?').run(req.params.id);
