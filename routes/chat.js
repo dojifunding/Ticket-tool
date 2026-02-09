@@ -98,24 +98,107 @@ router.post('/message', async (req, res) => {
   // AI mode: generate response
   if (session.status === 'ai' && ai.isConfigured()) {
     try {
-      // Gather knowledge base context (truncate to avoid timeout)
+      // ─── Smart KB Context: section-based search (simple RAG) ───
       const kbEntries = db.prepare('SELECT title, content FROM knowledge_base WHERE is_active=1').all();
+      const userQuestion = content.toLowerCase();
+
+      // Extract keywords from user question (remove stopwords)
+      const stopwords = new Set(['the','a','an','is','are','was','were','be','been','have','has','had','do','does','did','will','would','shall','should','may','might','must','can','could','i','me','my','we','our','you','your','he','she','it','they','them','their','this','that','what','which','who','how','when','where','why','in','on','at','to','for','with','from','of','and','or','but','not','no','if','so','as','by','up','out','about','into','les','la','le','un','une','des','du','de','est','sont','pour','dans','sur','avec','que','qui','quoi','quel','quelle','comment','pas','ne','se','ce','ces','mon','ton','son','nous','vous','ils','elles','et','ou','mais','donc','car','je','tu','il','elle','on','chez','par','en','au','aux','quelles','quels']);
+      const keywords = userQuestion
+        .replace(/[^a-z\u00e0-\u00ff0-9\s]/gi, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 1 && !stopwords.has(w));
+
       let knowledgeContext = '';
-      for (const k of kbEntries) {
-        const entry = `[${k.title}]: ${k.content.substring(0, 2000)}\n\n`;
-        if (knowledgeContext.length + entry.length > 8000) break; // Cap total context
-        knowledgeContext += entry;
+
+      if (kbEntries.length > 0) {
+        const scoredChunks = [];
+
+        for (const kb of kbEntries) {
+          if (kb.content.length <= 2000) {
+            // Short entry: use as-is
+            const lower = (kb.title + ' ' + kb.content).toLowerCase();
+            const score = keywords.reduce((s, kw) => s + (lower.includes(kw) ? 1 : 0), 0);
+            scoredChunks.push({ text: `[${kb.title}]:\n${kb.content}`, score: score || 0.05, len: kb.content.length });
+            continue;
+          }
+
+          // ─── Split long content into MAJOR numbered sections ───
+          // Match patterns like "1. Title", "20. 25K Static", "## Title"
+          const sectionRegex = /\n(?=\d{1,2}\.\s+[A-Z0-9★◆■])|(?=\n#{1,3}\s)/g;
+          const rawSections = kb.content.split(sectionRegex).filter(s => s.trim().length > 20);
+
+          // If the split didn't work well (only 1 section), try alternative split
+          const sections = rawSections.length > 1 ? rawSections : kb.content.split(/\n\n(?=[A-Z0-9#★◆■])/).filter(s => s.trim().length > 20);
+
+          // Merge very small consecutive sections (< 200 chars)
+          const mergedSections = [];
+          let buffer = '';
+          for (const sec of sections) {
+            if (buffer.length > 0 && buffer.length + sec.length < 800) {
+              buffer += '\n\n' + sec;
+            } else {
+              if (buffer) mergedSections.push(buffer);
+              buffer = sec;
+            }
+          }
+          if (buffer) mergedSections.push(buffer);
+
+          for (const section of mergedSections) {
+            const lower = (kb.title + ' ' + section).toLowerCase();
+
+            // Score: count keyword matches + bonus for matches in first 100 chars (heading)
+            let score = 0;
+            const heading = lower.substring(0, 150);
+            for (const kw of keywords) {
+              if (heading.includes(kw)) score += 3; // Strong match in heading
+              else if (lower.includes(kw)) score += 1; // Match in body
+            }
+
+            if (score > 0) {
+              scoredChunks.push({ text: `[${kb.title}]:\n${section.trim()}`, score, len: section.length });
+            }
+          }
+
+          // Always include table of contents / overview with low priority
+          scoredChunks.push({ text: `[${kb.title} — Table of contents]:\n${kb.content.substring(0, 1000)}`, score: 0.1, len: 1000 });
+        }
+
+        // Sort by relevance (highest keyword matches first)
+        scoredChunks.sort((a, b) => b.score - a.score);
+
+        // Take top chunks up to 18K chars
+        let totalLen = 0;
+        const maxContext = 18000;
+        for (const chunk of scoredChunks) {
+          if (totalLen + chunk.len > maxContext) {
+            // If chunk is very relevant (score >= 3) and we have room for part of it, truncate
+            if (chunk.score >= 3 && totalLen < maxContext - 500) {
+              const remaining = maxContext - totalLen;
+              knowledgeContext += chunk.text.substring(0, remaining) + '\n...(truncated)\n\n';
+              totalLen = maxContext;
+            }
+            continue;
+          }
+          knowledgeContext += chunk.text + '\n\n';
+          totalLen += chunk.len;
+        }
+
+        // Fallback: if no keyword matches, send beginning of each entry
+        if (knowledgeContext.length < 100) {
+          knowledgeContext = kbEntries.map(k => `[${k.title}]:\n${k.content.substring(0, 5000)}`).join('\n\n').substring(0, maxContext);
+        }
       }
 
-      // Gather FAQ articles context (limited)
+      // Gather FAQ articles
       const faqArticles = db.prepare('SELECT title, content FROM articles WHERE is_published=1 AND is_public=1 LIMIT 5').all();
-      const faqContext = faqArticles.map(a => `[${a.title}]: ${a.content.substring(0, 300)}`).join('\n\n');
+      const faqContext = faqArticles.map(a => `[${a.title}]: ${a.content.substring(0, 400)}`).join('\n\n');
 
-      // Get chat history (last 10 messages only)
+      // Get chat history (last 10 messages)
       const history = db.prepare('SELECT sender_type, content FROM chat_messages WHERE session_id=? ORDER BY created_at DESC LIMIT 10').all(session.id).reverse();
 
       const lang = req.session?.lang || 'fr';
-      console.log('[Chat] AI request — KB:', kbEntries.length, 'entries (' + knowledgeContext.length + ' chars), FAQ:', faqArticles.length, ', History:', history.length);
+      console.log('[Chat] AI — Keywords:', keywords.join(', '), '| KB context:', knowledgeContext.length, 'chars | Chunks:', knowledgeContext.split('\n\n').length);
 
       const aiResponse = await ai.livechatReply(history, knowledgeContext, faqContext, lang);
 
