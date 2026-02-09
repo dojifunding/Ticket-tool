@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const crypto = require('crypto');
-const { getDb, generateTicketRef, createNotification } = require('../database');
+const { getDb, generateTicketRef, createNotification, getSetting } = require('../database');
 const { getTranslations } = require('../i18n');
 const ai = require('../ai');
 
@@ -145,6 +145,49 @@ router.post('/message', async (req, res) => {
   // AI mode: generate response
   if (session.status === 'ai' && ai.isConfigured()) {
     try {
+      // ─── FAQ-First Search: try to answer from existing articles (FREE) ───
+      const faqFirst = getSetting('ai_livechat_faq_first', '1') === '1';
+      if (faqFirst) {
+        const userQ = content.toLowerCase().replace(/[^a-z\u00e0-\u00ff0-9\s]/gi, ' ');
+        const qWords = userQ.split(/\s+/).filter(w => w.length > 2);
+
+        if (qWords.length > 0) {
+          const faqArticles = db.prepare('SELECT id, title, content, excerpt FROM articles WHERE is_published=1 AND is_public=1').all();
+          let bestMatch = null;
+          let bestScore = 0;
+
+          for (const faq of faqArticles) {
+            const lower = (faq.title + ' ' + (faq.excerpt || '') + ' ' + faq.content).toLowerCase();
+            let score = 0;
+            for (const w of qWords) {
+              if (faq.title.toLowerCase().includes(w)) score += 3;
+              else if (lower.includes(w)) score += 1;
+            }
+            // Normalize by keyword count — need >60% match
+            const normalized = score / (qWords.length * 3);
+            if (normalized > 0.4 && score > bestScore) {
+              bestScore = score;
+              bestMatch = faq;
+            }
+          }
+
+          if (bestMatch && bestScore >= 3) {
+            // Direct FAQ answer — no AI cost!
+            const lang = req.session?.lang || 'fr';
+            const excerpt = bestMatch.excerpt || bestMatch.content.substring(0, 200);
+            const faqReply = lang === 'fr'
+              ? `D'après notre FAQ :\n\n**${bestMatch.title}**\n\n${bestMatch.content.substring(0, 800)}\n\n📖 *Consultez l'article complet dans notre centre d'aide.*`
+              : `From our FAQ:\n\n**${bestMatch.title}**\n\n${bestMatch.content.substring(0, 800)}\n\n📖 *See the full article in our help center.*`;
+
+            db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
+              .run(session.id, 'ai', 'Assistant', faqReply);
+
+            console.log('[Chat] FAQ-first match! Score:', bestScore, '→', bestMatch.title, '(AI call saved)');
+            return res.json({ ok: true, mode: 'faq', aiMessage: { sender_type: 'ai', sender_name: 'Assistant', content: faqReply, created_at: new Date().toISOString() } });
+          }
+        }
+      }
+
       // ─── Smart KB Context: section-based search (simple RAG) ───
       const kbEntries = db.prepare('SELECT title, content FROM knowledge_base WHERE is_active=1').all();
       const userQuestion = content.toLowerCase();

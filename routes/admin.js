@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
-const { getDb } = require('../database');
+const { getDb, getSetting, setSetting } = require('../database');
 const { isAuthenticated, isAdmin } = require('../middleware/auth');
 
 router.use(isAuthenticated, isAdmin);
@@ -41,7 +41,65 @@ router.get('/', (req, res) => {
     done: db.prepare('SELECT COUNT(*) as c FROM tasks WHERE status = ?').get('done').c,
   };
 
-  res.render('admin/dashboard', { stats, recentActivity, ticketsByStatus, tasksByStatus, title: 'Admin — Dashboard' });
+  // AI usage stats (last 30 days)
+  const aiStats = db.prepare(`
+    SELECT COUNT(*) as calls, COALESCE(SUM(tokens_estimate),0) as tokens, COALESCE(SUM(cost_estimate),0) as cost
+    FROM ai_usage_log WHERE created_at > datetime('now', '-30 days')
+  `).get();
+
+  const aiToday = db.prepare(`
+    SELECT COUNT(*) as calls, COALESCE(SUM(cost_estimate),0) as cost
+    FROM ai_usage_log WHERE created_at > datetime('now', '-1 day')
+  `).get();
+
+  res.render('admin/dashboard', { stats, recentActivity, ticketsByStatus, tasksByStatus, aiStats, aiToday, title: 'Admin — Dashboard' });
+});
+
+// ─── Settings Page ──────────────────────────────────
+router.get('/settings', (req, res) => {
+  const { getTranslations } = require('../i18n');
+  const lang = req.session.lang || 'fr';
+  const t = getTranslations(lang);
+  const ai = require('../ai');
+  const db = getDb();
+
+  const settings = {
+    translation_languages: getSetting('translation_languages', 'en'),
+    auto_translate_articles: getSetting('auto_translate_articles', '0'),
+    ai_livechat_faq_first: getSetting('ai_livechat_faq_first', '1'),
+  };
+
+  // AI usage stats
+  const aiUsage30d = db.prepare(`
+    SELECT COUNT(*) as calls, COALESCE(SUM(tokens_estimate),0) as tokens, COALESCE(ROUND(SUM(cost_estimate),4),0) as cost
+    FROM ai_usage_log WHERE created_at > datetime('now', '-30 days')
+  `).get();
+
+  const aiUsageByDay = db.prepare(`
+    SELECT date(created_at) as day, COUNT(*) as calls, COALESCE(SUM(tokens_estimate),0) as tokens, COALESCE(ROUND(SUM(cost_estimate),4),0) as cost
+    FROM ai_usage_log WHERE created_at > datetime('now', '-30 days')
+    GROUP BY date(created_at) ORDER BY day DESC LIMIT 14
+  `).all();
+
+  const untranslatedCount = db.prepare(`
+    SELECT COUNT(*) as c FROM articles WHERE is_published=1 AND (title_en IS NULL OR title_en = '')
+  `).get().c;
+
+  res.render('admin/settings', {
+    settings, aiConfigured: ai.isConfigured(), aiUsage30d, aiUsageByDay, untranslatedCount,
+    saved: req.query.saved,
+    title: 'Paramètres', t, lang, user: req.session.user, currentPath: '/admin/settings'
+  });
+});
+
+router.post('/settings', (req, res) => {
+  // Handle translation_languages (multiple checkboxes → can be string or array)
+  let transLangs = req.body.translation_languages || '';
+  if (Array.isArray(transLangs)) transLangs = transLangs.join(',');
+  setSetting('translation_languages', transLangs);
+  setSetting('auto_translate_articles', req.body.auto_translate_articles ? '1' : '0');
+  setSetting('ai_livechat_faq_first', req.body.ai_livechat_faq_first ? '1' : '0');
+  res.redirect('/admin/settings?saved=1');
 });
 
 // ─── User Management ─────────────────────────────────

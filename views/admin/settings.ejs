@@ -1,0 +1,203 @@
+<%- include('../partials/head') %>
+
+<div class="content-header">
+  <div>
+    <h1>⚙️ Paramètres</h1>
+    <p class="text-muted">Configuration IA, traductions et optimisation des coûts</p>
+  </div>
+</div>
+
+<% if (saved) { %>
+  <div class="alert alert-success" style="margin-bottom:1rem">✅ Paramètres sauvegardés.</div>
+<% } %>
+
+<div class="settings-grid">
+
+  <!-- ═══ Translation Settings ═══ -->
+  <div class="card">
+    <div class="card-header"><h2>🌐 Traduction automatique des articles</h2></div>
+    <div class="card-body">
+      <form method="POST" action="/admin/settings">
+        <div class="form-group">
+          <label><strong>Langues de traduction</strong></label>
+          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0.5rem">Sélectionnez les langues dans lesquelles les articles FAQ seront traduits automatiquement.</p>
+          <div class="checkbox-grid">
+            <% const langs = { en: '🇬🇧 Anglais', es: '🇪🇸 Espagnol', de: '🇩🇪 Allemand' }; %>
+            <% const activeLangs = settings.translation_languages.split(','); %>
+            <% for (const [code, name] of Object.entries(langs)) { %>
+              <label class="checkbox-item">
+                <input type="checkbox" name="translation_languages" value="<%= code %>"
+                  <%= activeLangs.includes(code) ? 'checked' : '' %>>
+                <span><%= name %></span>
+              </label>
+            <% } %>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="toggle-label">
+            <input type="checkbox" name="auto_translate_articles" value="1"
+              <%= settings.auto_translate_articles === '1' ? 'checked' : '' %>>
+            <span><strong>Traduction automatique à la publication</strong></span>
+          </label>
+          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0">Quand activé, les articles sont traduits automatiquement dans les langues sélectionnées lors de la publication.</p>
+        </div>
+
+        <div class="form-group" style="margin-top:1.5rem">
+          <label class="toggle-label">
+            <input type="checkbox" name="ai_livechat_faq_first" value="1"
+              <%= settings.ai_livechat_faq_first === '1' ? 'checked' : '' %>>
+            <span><strong>🔋 FAQ-first (économie IA)</strong></span>
+          </label>
+          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0">Quand activé, le livechat cherche d'abord une réponse dans les articles FAQ <strong>sans appeler l'IA</strong>. L'IA n'est sollicitée que si aucun article ne correspond. Plus vous avez d'articles, plus vous économisez.</p>
+        </div>
+
+        <div style="margin-top:1.5rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+          <button type="submit" class="btn btn-primary">💾 Sauvegarder</button>
+        </div>
+      </form>
+
+      <hr style="margin:1.5rem 0;border-color:var(--border)">
+
+      <h3 style="margin-bottom:0.75rem">📝 Traduction manuelle</h3>
+      <p class="text-muted" style="font-size:0.85rem;margin-bottom:0.75rem">
+        <strong><%= untranslatedCount %></strong> article(s) non traduit(s) détecté(s).
+      </p>
+      <% if (aiConfigured) { %>
+        <button class="btn btn-primary" onclick="bulkTranslate()" id="bulkTransBtn">
+          <span class="btn-text">🌐 Traduire tous les articles non traduits</span>
+          <span class="btn-loading" style="display:none">Traduction en cours...</span>
+        </button>
+        <div id="translateProgress" style="display:none;margin-top:0.75rem">
+          <div class="ai-progress-bar"><div class="ai-progress-fill" id="transFill" style="width:10%"></div></div>
+          <p class="ai-progress-text" id="transText">Traduction en cours...</p>
+        </div>
+      <% } else { %>
+        <p class="text-muted">⚠️ Configurez ANTHROPIC_API_KEY pour activer la traduction IA.</p>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- ═══ AI Usage Dashboard ═══ -->
+  <div class="card">
+    <div class="card-header"><h2>📊 Consommation IA (30 derniers jours)</h2></div>
+    <div class="card-body">
+      <div class="stats-mini-grid">
+        <div class="stat-mini">
+          <div class="stat-mini-value"><%= aiUsage30d.calls %></div>
+          <div class="stat-mini-label">Appels API</div>
+        </div>
+        <div class="stat-mini">
+          <div class="stat-mini-value"><%= (aiUsage30d.tokens / 1000).toFixed(1) %>K</div>
+          <div class="stat-mini-label">Tokens</div>
+        </div>
+        <div class="stat-mini">
+          <div class="stat-mini-value">$<%= aiUsage30d.cost.toFixed(3) %></div>
+          <div class="stat-mini-label">Coût estimé</div>
+        </div>
+      </div>
+
+      <h3 style="margin:1.5rem 0 0.75rem">Détail par jour</h3>
+      <% if (aiUsageByDay.length > 0) { %>
+        <table class="table table-sm">
+          <thead><tr><th>Date</th><th>Appels</th><th>Tokens</th><th>Coût</th></tr></thead>
+          <tbody>
+            <% aiUsageByDay.forEach(d => { %>
+              <tr>
+                <td><%= d.day %></td>
+                <td><%= d.calls %></td>
+                <td><%= (d.tokens / 1000).toFixed(1) %>K</td>
+                <td>$<%= d.cost.toFixed(4) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } else { %>
+        <p class="text-muted">Aucune donnée de consommation encore enregistrée.</p>
+      <% } %>
+
+      <h3 style="margin:1.5rem 0 0.75rem">💡 Où l'IA est utilisée</h3>
+      <table class="table table-sm">
+        <thead><tr><th>Action</th><th>Déclencheur</th><th>Coût/appel</th><th>Optimisation</th></tr></thead>
+        <tbody>
+          <tr><td>💬 Livechat IA</td><td>Chaque message visiteur</td><td>~$0.003</td><td class="text-success">✅ FAQ-first activé</td></tr>
+          <tr><td>🎫 Suggestion ticket</td><td>Clic staff</td><td>~$0.005</td><td>Manuel uniquement</td></tr>
+          <tr><td>📝 Génération articles</td><td>Admin manuelle</td><td>~$0.02/batch</td><td>Usage rare</td></tr>
+          <tr><td>🌐 Traduction</td><td>Publication ou manuelle</td><td>~$0.003/article</td><td>Une seule fois/article</td></tr>
+          <tr><td>🔍 Analyse patterns</td><td>Manuelle ou /50 msgs</td><td>~$0.005</td><td>Usage rare</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+async function bulkTranslate() {
+  const btn = document.getElementById('bulkTransBtn');
+  const progress = document.getElementById('translateProgress');
+  const fill = document.getElementById('transFill');
+  const text = document.getElementById('transText');
+
+  btn.querySelector('.btn-text').style.display = 'none';
+  btn.querySelector('.btn-loading').style.display = 'inline';
+  btn.disabled = true;
+  progress.style.display = 'block';
+
+  try {
+    const res = await fetch('/admin/articles/ai/bulk-translate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const data = await res.json();
+
+    if (data.message) {
+      alert(data.message);
+    } else if (data.jobId) {
+      text.textContent = 'Traduction de ' + data.count + ' article(s)...';
+      let polls = 0;
+      const poll = async () => {
+        polls++;
+        fill.style.width = Math.min(10 + polls * 8, 90) + '%';
+        text.textContent = 'Traduction en cours... (' + polls * 2 + 's)';
+        const r = await fetch('/admin/articles/ai/job/' + data.jobId);
+        const job = await r.json();
+        if (job.status === 'done') {
+          fill.style.width = '100%';
+          text.textContent = '✅ ' + (job.result.translated || 0) + ' traduction(s) terminée(s) !';
+          setTimeout(() => location.reload(), 1500);
+          return;
+        }
+        if (job.status === 'error') { text.textContent = '❌ ' + job.error; return; }
+        setTimeout(poll, 2000);
+      };
+      poll();
+      return;
+    }
+  } catch (e) { alert('Erreur: ' + e.message); }
+
+  btn.querySelector('.btn-text').style.display = 'inline';
+  btn.querySelector('.btn-loading').style.display = 'none';
+  btn.disabled = false;
+}
+</script>
+
+<style>
+.settings-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+@media (min-width: 1024px) { .settings-grid { grid-template-columns: 1fr 1fr; } }
+.checkbox-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.25rem; }
+.checkbox-item { display: flex; align-items: center; gap: 0.4rem; cursor: pointer; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-tertiary); }
+.checkbox-item input:checked + span { color: var(--primary); font-weight: 600; }
+.toggle-label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+.toggle-label input { accent-color: var(--primary); width: 16px; height: 16px; }
+.stats-mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.stat-mini { text-align: center; padding: 1rem; background: var(--bg-tertiary); border-radius: var(--radius); border: 1px solid var(--border); }
+.stat-mini-value { font-size: 1.5rem; font-weight: 800; color: var(--primary); }
+.stat-mini-label { font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; }
+.table-sm { font-size: 0.85rem; }
+.table-sm th { font-weight: 600; padding: 0.5rem; border-bottom: 1px solid var(--border); }
+.table-sm td { padding: 0.4rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.text-success { color: #10b981; }
+.alert-success { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #10b981; padding: 0.75rem 1rem; border-radius: var(--radius); }
+</style>
+
+<%- include('../partials/foot') %>

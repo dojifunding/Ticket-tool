@@ -69,8 +69,22 @@ async function callClaude(systemPrompt, userMessage, maxTokens = 2000, timeoutMs
   }
 
   const data = await response.json();
-  console.log('[AI] ✅ Response received:', data.content?.[0]?.text?.substring(0, 60));
-  return data.content[0].text;
+  const text = data.content[0].text;
+  const usage = data.usage || {};
+  const totalTokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
+  console.log('[AI] ✅ Response —', totalTokens, 'tokens (in:', usage.input_tokens, '/ out:', usage.output_tokens, ')');
+
+  // Track usage for cost monitoring
+  try {
+    const { logAiUsage } = require('./database');
+    logAiUsage('api_call', totalTokens, null, JSON.stringify({
+      model: getModel(),
+      input_tokens: usage.input_tokens || 0,
+      output_tokens: usage.output_tokens || 0
+    }));
+  } catch (e) { /* ignore tracking errors */ }
+
+  return text;
 }
 
 // ─── Generate FAQ Article from Resources ─────────────
@@ -184,6 +198,60 @@ async function improveText(text, instruction, lang = 'fr') {
   return await callClaude(systemPrompt, `Instruction: ${instruction}\n\nText to improve:\n${text}`, 2000);
 }
 
+// ─── Translate Article ──────────────────────────────
+async function translateArticle(title, content, excerpt, targetLangs) {
+  const langNames = { en: 'English', es: 'Spanish', de: 'German', fr: 'French', it: 'Italian', pt: 'Portuguese' };
+  const targets = targetLangs.filter(l => langNames[l]);
+  if (targets.length === 0) return {};
+
+  const systemPrompt = `You are a professional translator for a customer help center. Translate the article below into the requested languages.
+
+RULES:
+- Keep Markdown formatting intact (##, **, -, etc.)
+- Keep technical terms, product names, and brand names unchanged
+- Adapt expressions naturally (don't translate literally)
+- Return ONLY valid JSON with this exact structure:
+{
+  ${targets.map(l => `"${l}": { "title": "...", "content": "...", "excerpt": "..." }`).join(',\n  ')}
+}
+- NO text outside the JSON`;
+
+  const userMsg = `Translate this article into ${targets.map(l => langNames[l]).join(', ')}:
+
+TITLE: ${title}
+EXCERPT: ${excerpt || ''}
+CONTENT:
+${content.substring(0, 4000)}`;
+
+  try {
+    const result = await callClaude(systemPrompt, userMsg, 3000, 60000);
+    const clean = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    console.error('[AI] Translation error:', e.message);
+    return {};
+  }
+}
+
+// ─── Batch Translate Multiple Articles (parallel) ───
+async function batchTranslateArticles(articles, targetLangs) {
+  const CONCURRENCY = 3;
+  const results = [];
+
+  for (let i = 0; i < articles.length; i += CONCURRENCY) {
+    const batch = articles.slice(i, i + CONCURRENCY);
+    const promises = batch.map(a =>
+      translateArticle(a.title, a.content, a.excerpt || '', targetLangs)
+        .then(translations => ({ id: a.id, translations }))
+        .catch(e => ({ id: a.id, translations: {}, error: e.message }))
+    );
+    const batchResults = await Promise.all(promises);
+    results.push(...batchResults);
+  }
+
+  return results;
+}
+
 module.exports = {
   isConfigured,
   generateArticle,
@@ -194,7 +262,9 @@ module.exports = {
   extractFromUrl,
   analyzeImage,
   generateFromKB,
-  analyzeTicketPatterns
+  analyzeTicketPatterns,
+  translateArticle,
+  batchTranslateArticles
 };
 
 // ─── Livechat AI Agent ───────────────────────────────

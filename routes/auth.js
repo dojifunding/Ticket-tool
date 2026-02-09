@@ -6,7 +6,7 @@ const { getTranslations } = require('../i18n');
 
 // ─── Language Switch ────────────────────────────────
 router.get('/lang/:code', (req, res) => {
-  const lang = ['fr', 'en'].includes(req.params.code) ? req.params.code : 'fr';
+  const lang = ['fr', 'en', 'es', 'de'].includes(req.params.code) ? req.params.code : 'fr';
   req.session.lang = lang;
   res.redirect(req.headers.referer || '/');
 });

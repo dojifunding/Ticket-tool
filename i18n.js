@@ -988,12 +988,64 @@ const translations = {
   }
 };
 
+// ─── Spanish (help center) ─────────────────────
+translations.es = { ...translations.fr, lang: 'es',
+  help_title: 'Centro de ayuda',
+  help_hero_title: '¿Cómo podemos ayudarte?',
+  help_hero_subtitle: 'Busca en nuestra base de conocimientos o navega por las categorías',
+  help_search_placeholder: 'Buscar un artículo, un tema...',
+  help_search_btn: 'Buscar', help_search: 'Búsqueda',
+  help_search_results: 'Resultados para', help_articles: 'artículos',
+  help_popular: 'Artículos populares', help_staff_only: 'Solo personal',
+  help_back_home: 'Volver al inicio', help_back_app: 'Volver a la app',
+  help_no_results: 'No se encontraron resultados',
+  help_no_results_text: 'Intenta otros términos de búsqueda o navega por las categorías.',
+  help_no_articles: 'No hay artículos en esta categoría.',
+  help_related: 'Artículos relacionados', help_views: 'vistas',
+  help_still_need_help: '¿No encontraste la respuesta? Contacta con nuestro soporte.',
+  help_contact_title: '¿Necesitas más ayuda?',
+  help_contact_text: 'Nuestro equipo de soporte está aquí para ayudarte.',
+  help_contact_btn: 'Contactar soporte', help_footer: 'Todos los derechos reservados',
+  help_submit_nav: 'Contacto', help_submit_title: 'Contactar soporte',
+  help_submit_name: 'Tu nombre', help_submit_email: 'Tu email',
+  help_submit_subject: 'Asunto', help_submit_message: 'Describe tu problema',
+  help_submit_btn: 'Enviar', help_submit_success: '¡Ticket creado!',
+  help_submit_success_text: 'Tu solicitud ha sido registrada.',
+  login_submit: 'Iniciar sesión',
+};
+
+// ─── German (help center) ──────────────────────
+translations.de = { ...translations.fr, lang: 'de',
+  help_title: 'Hilfezentrum',
+  help_hero_title: 'Wie können wir Ihnen helfen?',
+  help_hero_subtitle: 'Durchsuchen Sie unsere Wissensdatenbank oder stöbern Sie in den Kategorien',
+  help_search_placeholder: 'Artikel suchen...', help_search_btn: 'Suchen',
+  help_search: 'Suche', help_search_results: 'Ergebnisse für',
+  help_articles: 'Artikel', help_popular: 'Beliebte Artikel',
+  help_staff_only: 'Nur Mitarbeiter', help_back_home: 'Zurück zur Startseite',
+  help_back_app: 'Zurück zur App', help_no_results: 'Keine Ergebnisse gefunden',
+  help_no_results_text: 'Versuchen Sie andere Suchbegriffe oder durchsuchen Sie die Kategorien.',
+  help_no_articles: 'Keine Artikel in dieser Kategorie.',
+  help_related: 'Verwandte Artikel', help_views: 'Aufrufe',
+  help_still_need_help: 'Keine Antwort gefunden? Kontaktieren Sie unseren Support.',
+  help_contact_title: 'Brauchen Sie weitere Hilfe?',
+  help_contact_text: 'Unser Support-Team hilft Ihnen gerne weiter.',
+  help_contact_btn: 'Support kontaktieren', help_footer: 'Alle Rechte vorbehalten',
+  help_submit_nav: 'Kontakt', help_submit_title: 'Support kontaktieren',
+  help_submit_name: 'Ihr Name', help_submit_email: 'Ihre E-Mail',
+  help_submit_subject: 'Betreff', help_submit_message: 'Beschreiben Sie Ihr Problem',
+  help_submit_btn: 'Absenden', help_submit_success: 'Ticket erstellt!',
+  help_submit_success_text: 'Ihre Anfrage wurde registriert.',
+  login_submit: 'Anmelden',
+};
+
 function getTranslations(lang) {
   return translations[lang] || translations.fr;
 }
 
 function getDateLocale(lang) {
-  return lang === 'en' ? 'en-GB' : 'fr-FR';
+  const locales = { fr: 'fr-FR', en: 'en-GB', es: 'es-ES', de: 'de-DE' };
+  return locales[lang] || 'fr-FR';
 }
 
 module.exports = { getTranslations, getDateLocale };

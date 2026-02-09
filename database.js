@@ -240,6 +240,44 @@ async function initDatabase() {
   db.exec('CREATE INDEX IF NOT EXISTS idx_chat_sessions_ticket ON chat_sessions(ticket_id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id)');
 
+  // ─── App Settings Table ─────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // Default settings
+  const defaultSettings = [
+    ['translation_languages', 'en'],
+    ['auto_translate_articles', '0'],
+    ['ai_livechat_faq_first', '1'],
+  ];
+  for (const [k, v] of defaultSettings) {
+    db.exec(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('${k}', '${v}')`);
+  }
+
+  // ─── AI Usage Log ──────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS ai_usage_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action TEXT NOT NULL,
+    tokens_estimate INTEGER DEFAULT 0,
+    cost_estimate REAL DEFAULT 0,
+    user_id INTEGER,
+    details TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // ─── Add translation columns to articles if missing ───
+  try { db.exec('ALTER TABLE articles ADD COLUMN content_es TEXT'); } catch(e) {}
+  try { db.exec('ALTER TABLE articles ADD COLUMN title_es TEXT'); } catch(e) {}
+  try { db.exec('ALTER TABLE articles ADD COLUMN excerpt_es TEXT'); } catch(e) {}
+  try { db.exec('ALTER TABLE articles ADD COLUMN content_de TEXT'); } catch(e) {}
+  try { db.exec('ALTER TABLE articles ADD COLUMN title_de TEXT'); } catch(e) {}
+  try { db.exec('ALTER TABLE articles ADD COLUMN excerpt_de TEXT'); } catch(e) {}
+  try { db.exec('ALTER TABLE article_categories ADD COLUMN name_es TEXT'); } catch(e) {}
+  try { db.exec('ALTER TABLE article_categories ADD COLUMN name_de TEXT'); } catch(e) {}
+
   const adminExists = db.prepare('SELECT id FROM users WHERE role = ?').get('admin');
   if (!adminExists) {
     const c = ['#6366f1','#ec4899','#f59e0b','#10b981','#3b82f6','#8b5cf6'];
@@ -347,4 +385,25 @@ function logActivity(userId, action, entityType, entityId, details) {
   }
 }
 
-module.exports = { getDb, initDatabase, generateTicketRef, createNotification, logActivity };
+// ─── Settings Helpers ──────────────────────────────
+function getSetting(key, defaultValue = '') {
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM app_settings WHERE key=?').get(key);
+  return row ? row.value : defaultValue;
+}
+
+function setSetting(key, value) {
+  const db = getDb();
+  db.prepare('INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)').run(key, String(value));
+}
+
+function logAiUsage(action, tokensEstimate, userId, details) {
+  const db = getDb();
+  // Rough cost: ~$3/M input tokens, ~$15/M output tokens for Sonnet → avg ~$0.005/1K tokens
+  const costEstimate = (tokensEstimate / 1000) * 0.005;
+  db.prepare('INSERT INTO ai_usage_log (action, tokens_estimate, cost_estimate, user_id, details) VALUES (?,?,?,?,?)').run(
+    action, tokensEstimate, costEstimate, userId || null, details || null
+  );
+}
+
+module.exports = { getDb, initDatabase, generateTicketRef, createNotification, logActivity, getSetting, setSetting, logAiUsage };

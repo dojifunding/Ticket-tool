@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { getDb, logActivity } = require('../database');
+const { getDb, logActivity, getSetting } = require('../database');
 const { isAuthenticated } = require('../middleware/auth');
 const ai = require('../ai');
 const crypto = require('crypto');
@@ -156,26 +156,101 @@ router.post('/:id/toggle-publish', (req, res) => {
 // ─── Bulk Publish AI-Generated Articles ──────────────
 router.post('/ai/bulk-publish', (req, res) => {
   const db = getDb();
-  const { articles } = req.body; // [{ title, content, excerpt, category_id, publish }]
+  const { articles } = req.body;
   if (!articles || !Array.isArray(articles)) return res.status(400).json({ error: 'Invalid data' });
 
-  let published = 0;
+  const publishedIds = [];
   for (const a of articles) {
     if (!a.publish || !a.title || !a.content) continue;
     const slug = a.title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').substring(0, 80);
-    // Ensure unique slug
     const existing = db.prepare('SELECT id FROM articles WHERE slug=?').get(slug);
     const finalSlug = existing ? slug + '-' + Date.now().toString(36) : slug;
 
-    db.prepare(`INSERT INTO articles (title, slug, excerpt, content, category_id, is_published, is_public, author_id)
+    const result = db.prepare(`INSERT INTO articles (title, slug, excerpt, content, category_id, is_published, is_public, author_id)
       VALUES (?, ?, ?, ?, ?, 1, 1, ?)`).run(
       a.title, finalSlug, a.excerpt || '', a.content, a.category_id || null, req.session.user.id
     );
-    published++;
+    publishedIds.push(result.lastInsertRowid);
   }
 
-  res.json({ ok: true, published });
+  // Auto-translate in background if enabled
+  const autoTranslate = getSetting('auto_translate_articles', '0') === '1';
+  const transLangs = getSetting('translation_languages', 'en').split(',').filter(l => l.trim());
+  if (autoTranslate && transLangs.length > 0 && publishedIds.length > 0 && ai.isConfigured()) {
+    (async () => {
+      try {
+        const toTranslate = db.prepare(`SELECT id, title, content, excerpt FROM articles WHERE id IN (${publishedIds.join(',')})`).all();
+        const results = await ai.batchTranslateArticles(toTranslate, transLangs);
+        for (const r of results) {
+          if (!r.translations) continue;
+          for (const [lang, t] of Object.entries(r.translations)) {
+            if (t.title) {
+              const cols = { en: ['title_en','content_en','excerpt_en'], es: ['title_es','content_es','excerpt_es'], de: ['title_de','content_de','excerpt_de'] };
+              const c = cols[lang];
+              if (c) db.prepare(`UPDATE articles SET ${c[0]}=?, ${c[1]}=?, ${c[2]}=? WHERE id=?`).run(t.title, t.content || '', t.excerpt || '', r.id);
+            }
+          }
+        }
+        console.log('[AI] Auto-translated', results.length, 'articles into', transLangs.join(','));
+      } catch (e) { console.error('[AI] Auto-translate error:', e.message); }
+    })();
+  }
+
+  res.json({ ok: true, published: publishedIds.length, autoTranslating: autoTranslate && transLangs.length > 0 });
+});
+
+// ─── Translate Single Article ────────────────────────
+router.post('/:id/translate', async (req, res) => {
+  if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured' });
+  const db = getDb();
+  const article = db.prepare('SELECT * FROM articles WHERE id=?').get(req.params.id);
+  if (!article) return res.status(404).json({ error: 'Article not found' });
+
+  const transLangs = getSetting('translation_languages', 'en').split(',').filter(l => l.trim());
+  if (!transLangs.length) return res.json({ ok: true, message: 'No languages configured' });
+
+  const jobId = createJob(async () => {
+    const translations = await ai.translateArticle(article.title, article.content, article.excerpt, transLangs);
+    for (const [lang, t] of Object.entries(translations)) {
+      if (!t.title) continue;
+      const cols = { en: ['title_en','content_en','excerpt_en'], es: ['title_es','content_es','excerpt_es'], de: ['title_de','content_de','excerpt_de'] };
+      const c = cols[lang];
+      if (c) db.prepare(`UPDATE articles SET ${c[0]}=?, ${c[1]}=?, ${c[2]}=? WHERE id=?`).run(t.title, t.content || '', t.excerpt || '', article.id);
+    }
+    return { translated: Object.keys(translations) };
+  });
+  res.json({ ok: true, jobId });
+});
+
+// ─── Bulk Translate All Untranslated ─────────────────
+router.post('/ai/bulk-translate', async (req, res) => {
+  if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured' });
+  const db = getDb();
+  const transLangs = getSetting('translation_languages', 'en').split(',').filter(l => l.trim());
+  if (!transLangs.length) return res.json({ ok: true, message: 'No languages configured' });
+
+  // Find articles missing translations for ANY configured language
+  const conditions = transLangs.map(l => `(title_${l} IS NULL OR title_${l} = '')`).join(' OR ');
+  const articles = db.prepare(`SELECT id, title, content, excerpt FROM articles WHERE is_published=1 AND (${conditions})`).all();
+
+  if (!articles.length) return res.json({ ok: true, message: 'All articles already translated' });
+
+  const jobId = createJob(async () => {
+    const results = await ai.batchTranslateArticles(articles, transLangs);
+    let translated = 0;
+    for (const r of results) {
+      if (!r.translations) continue;
+      for (const [lang, t] of Object.entries(r.translations)) {
+        if (!t.title) continue;
+        const cols = { en: ['title_en','content_en','excerpt_en'], es: ['title_es','content_es','excerpt_es'], de: ['title_de','content_de','excerpt_de'] };
+        const c = cols[lang];
+        if (c) { db.prepare(`UPDATE articles SET ${c[0]}=?, ${c[1]}=?, ${c[2]}=? WHERE id=?`).run(t.title, t.content || '', t.excerpt || '', r.id); translated++; }
+      }
+    }
+    return { translated, total: articles.length, languages: transLangs };
+  });
+  res.json({ ok: true, jobId, count: articles.length });
 });
 
 // ═══════════════════════════════════════════════════════

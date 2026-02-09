@@ -55,7 +55,12 @@
           <td>
             <div class="article-title-cell">
               <strong><%= article.title %></strong>
-              <% if (article.title_en) { %><small class="text-muted"><%= article.title_en %></small><% } %>
+              <div class="article-lang-badges">
+                <span class="lang-badge lang-badge-ok">FR</span>
+                <span class="lang-badge <%= article.title_en ? 'lang-badge-ok' : 'lang-badge-miss' %>">EN</span>
+                <span class="lang-badge <%= article.title_es ? 'lang-badge-ok' : 'lang-badge-miss' %>">ES</span>
+                <span class="lang-badge <%= article.title_de ? 'lang-badge-ok' : 'lang-badge-miss' %>">DE</span>
+              </div>
             </div>
           </td>
           <td>
@@ -81,6 +86,9 @@
             <div class="action-btns">
               <a href="/help/article/<%= article.slug %>" target="_blank" class="btn btn-xs btn-ghost" title="<%= t.articles_preview %>">👁️</a>
               <a href="/admin/articles/<%= article.id %>/edit" class="btn btn-xs btn-ghost" title="<%= t.articles_edit %>">✏️</a>
+              <% if (aiConfigured) { %>
+                <button class="btn btn-xs btn-ghost" title="Traduire" onclick="translateArticle(<%= article.id %>)" id="transBtn<%= article.id %>">🌐</button>
+              <% } %>
               <form method="POST" action="/admin/articles/<%= article.id %>/toggle-publish" style="display:inline">
                 <button type="submit" class="btn btn-xs btn-ghost" title="<%= article.is_published ? t.articles_unpublish : t.articles_publish %>">
                   <%= article.is_published ? '📤' : '📥' %>
@@ -425,6 +433,34 @@ document.getElementById('aiModal')?.addEventListener('click', function(e) { if (
 function toggleAllKb() {
   const checked = document.getElementById('kbSelectAll').checked;
   document.querySelectorAll('input[name="kbIds"]').forEach(cb => cb.checked = checked);
+}
+
+// ─── Translate single article ───
+async function translateArticle(id) {
+  const btn = document.getElementById('transBtn' + id);
+  if (!btn) return;
+  btn.textContent = '⏳';
+  btn.disabled = true;
+  try {
+    const res = await fetch('/admin/articles/' + id + '/translate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const data = await res.json();
+    if (data.jobId) {
+      // Poll for completion
+      const poll = async () => {
+        const r = await fetch('/admin/articles/ai/job/' + data.jobId);
+        const job = await r.json();
+        if (job.status === 'done') { btn.textContent = '✅'; setTimeout(() => location.reload(), 800); return; }
+        if (job.status === 'error') { btn.textContent = '❌'; alert('Erreur: ' + job.error); return; }
+        setTimeout(poll, 2000);
+      };
+      poll();
+    } else {
+      btn.textContent = '✅';
+      alert(data.message || 'Traduit !');
+    }
+  } catch (e) { btn.textContent = '❌'; alert('Erreur: ' + e.message); }
 }
 </script>
 

@@ -18,9 +18,11 @@
       </a>
       <div class="help-nav-actions">
         <a href="/help/submit" class="btn btn-primary btn-sm"><%= t.help_submit_nav %></a>
-        <div class="lang-toggle">
+        <div class="lang-toggle lang-toggle-multi">
           <a href="/lang/fr" class="lang-btn <%= t.lang === 'fr' ? 'active' : '' %>">FR</a>
           <a href="/lang/en" class="lang-btn <%= t.lang === 'en' ? 'active' : '' %>">EN</a>
+          <a href="/lang/es" class="lang-btn <%= t.lang === 'es' ? 'active' : '' %>">ES</a>
+          <a href="/lang/de" class="lang-btn <%= t.lang === 'de' ? 'active' : '' %>">DE</a>
         </div>
         <% if (user) { %>
           <a href="/" class="btn btn-ghost btn-sm"><%= t.help_back_app %></a>

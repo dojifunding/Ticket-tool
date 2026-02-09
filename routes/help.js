@@ -13,9 +13,9 @@ function renderMarkdown(md) {
   catch (e) { return '<pre>' + md.replace(/</g, '&lt;') + '</pre>'; }
 }
 
-// Helper: get lang-aware field
+// Helper: get lang-aware field (supports fr, en, es, de)
 function locField(row, field, lang) {
-  if (lang === 'en' && row[field + '_en']) return row[field + '_en'];
+  if (lang !== 'fr' && row[field + '_' + lang]) return row[field + '_' + lang];
   return row[field];
 }
 
