@@ -49,7 +49,22 @@
               <%= settings.ai_livechat_faq_first === '1' ? 'checked' : '' %>>
             <span><strong>🔋 FAQ-first (économie IA)</strong></span>
           </label>
-          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0">Quand activé, le livechat cherche d'abord une réponse dans les articles FAQ <strong>sans appeler l'IA</strong>. L'IA n'est sollicitée que si aucun article ne correspond. Plus vous avez d'articles, plus vous économisez.</p>
+          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0">Quand activé, le livechat cherche d'abord une réponse dans les articles FAQ <strong>sans appeler l'IA</strong>. L'IA n'est sollicitée que si aucun article ne correspond.</p>
+        </div>
+
+        <hr style="margin:1.5rem 0;border-color:var(--border)">
+        <h3 style="margin-bottom:0.75rem">🏢 Identité de l'entreprise</h3>
+
+        <div class="form-group">
+          <label><strong>Nom de l'entreprise</strong></label>
+          <input type="text" name="company_name" value="<%= settings.company_name || '' %>" placeholder="Ex: Phidias Propfirm, Acme Corp..." style="max-width:400px">
+          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0">Le chatbot IA se présentera comme l'assistant de cette entreprise (pas comme "Assistant ProjectHub").</p>
+        </div>
+
+        <div class="form-group">
+          <label><strong>Contexte pour l'IA</strong></label>
+          <textarea name="chatbot_context" rows="4" placeholder="Ex: Phidias Propfirm est une société de trading propriétaire basée à Gibraltar. Nous proposons des comptes de trading évalués. Notre support est disponible en français et anglais."><%= settings.chatbot_context || '' %></textarea>
+          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0">Description courte de l'entreprise et de ses services. L'IA utilisera ce contexte pour répondre de manière plus pertinente aux visiteurs.</p>
         </div>
 
         <div style="margin-top:1.5rem;display:flex;gap:0.5rem;flex-wrap:wrap">

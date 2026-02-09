@@ -280,17 +280,19 @@ router.post('/message', async (req, res) => {
         }
       }
 
-      // Gather FAQ articles
-      const faqArticles = db.prepare('SELECT title, content FROM articles WHERE is_published=1 AND is_public=1 LIMIT 5').all();
-      const faqContext = faqArticles.map(a => `[${a.title}]: ${a.content.substring(0, 400)}`).join('\n\n');
+      // Gather FAQ articles — ALL published articles, not just 5
+      const faqArticles = db.prepare('SELECT title, content FROM articles WHERE is_published=1 AND is_public=1').all();
+      const faqContext = faqArticles.map(a => `[FAQ: ${a.title}]:\n${a.content.substring(0, 1000)}`).join('\n\n');
 
       // Get chat history (last 10 messages)
       const history = db.prepare('SELECT sender_type, content FROM chat_messages WHERE session_id=? ORDER BY created_at DESC LIMIT 10').all(session.id).reverse();
 
       const lang = req.session?.lang || 'fr';
-      console.log('[Chat] AI — Keywords:', keywords.join(', '), '| KB context:', knowledgeContext.length, 'chars | Chunks:', knowledgeContext.split('\n\n').length);
+      const companyName = getSetting('company_name', '');
+      const chatbotContext = getSetting('chatbot_context', '');
+      console.log('[Chat] AI — Keywords:', keywords.join(', '), '| KB context:', knowledgeContext.length, 'chars | FAQ articles:', faqArticles.length, '| Company:', companyName || '(default)');
 
-      const aiResponse = await ai.livechatReply(history, knowledgeContext, faqContext, lang);
+      const aiResponse = await ai.livechatReply(history, knowledgeContext, faqContext, lang, companyName, chatbotContext);
 
       // Save AI response
       db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')

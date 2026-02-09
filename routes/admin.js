@@ -67,6 +67,8 @@ router.get('/settings', (req, res) => {
     translation_languages: getSetting('translation_languages', 'en'),
     auto_translate_articles: getSetting('auto_translate_articles', '0'),
     ai_livechat_faq_first: getSetting('ai_livechat_faq_first', '1'),
+    company_name: getSetting('company_name', ''),
+    chatbot_context: getSetting('chatbot_context', ''),
   };
 
   // AI usage stats
@@ -99,6 +101,8 @@ router.post('/settings', (req, res) => {
   setSetting('translation_languages', transLangs);
   setSetting('auto_translate_articles', req.body.auto_translate_articles ? '1' : '0');
   setSetting('ai_livechat_faq_first', req.body.ai_livechat_faq_first ? '1' : '0');
+  setSetting('company_name', (req.body.company_name || '').trim());
+  setSetting('chatbot_context', (req.body.chatbot_context || '').trim());
   res.redirect('/admin/settings?saved=1');
 });
 

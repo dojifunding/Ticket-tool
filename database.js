@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DB_PATH = path.join(DATA_DIR, 'hub.db');
 
 let db = null;
@@ -252,6 +252,8 @@ async function initDatabase() {
     ['translation_languages', 'en'],
     ['auto_translate_articles', '0'],
     ['ai_livechat_faq_first', '1'],
+    ['company_name', 'Notre entreprise'],
+    ['chatbot_context', ''],
   ];
   for (const [k, v] of defaultSettings) {
     db.exec(`INSERT OR IGNORE INTO app_settings (key, value) VALUES ('${k}', '${v}')`);
