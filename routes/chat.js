@@ -1,13 +1,37 @@
 const router = require('express').Router();
 const crypto = require('crypto');
-const { getDb, generateTicketRef, createNotification, getSetting } = require('../database');
+const { getDb, generateTicketRef, createNotification, getSetting, requestStore } = require('../database');
 const { getTranslations } = require('../i18n');
 const ai = require('../ai');
 
+// ─── Middleware: save tenantId for future widget polling ───
+// When a chat request has tenant context (logged-in user), persist it
+// so the widget can continue polling after page changes
+router.use((req, res, next) => {
+  const tenantId = req.session?.tenantId || res.locals?.tenantId;
+  if (tenantId && req.session) {
+    req.session.chatTenantId = tenantId;
+  }
+  next();
+});
+
+// Helper: safely get DB with graceful error for missing tenant context
+function safeGetDb(res) {
+  try {
+    return getDb();
+  } catch (e) {
+    if (e.message.includes('No tenant DB')) {
+      res.status(503).json({ error: 'Session expired. Please refresh the page.' });
+      return null;
+    }
+    throw e;
+  }
+}
+
 // ─── Get or Create Session ───────────────────────────
 router.post('/session', (req, res) => {
-  const db = getDb();
-  const { token, name, email } = req.body;
+  const db = safeGetDb(res); if (!db) return;
+  const { token, name, email, company_slug } = req.body;
 
   if (token) {
     const session = db.prepare('SELECT * FROM chat_sessions WHERE visitor_token = ?').get(token);
@@ -17,10 +41,17 @@ router.post('/session', (req, res) => {
     }
   }
 
+  // Resolve company_id from slug
+  let companyId = null;
+  if (company_slug) {
+    const comp = db.prepare('SELECT id FROM companies WHERE slug = ?').get(company_slug);
+    if (comp) companyId = comp.id;
+  }
+
   // Create new session
   const newToken = crypto.randomUUID();
-  db.prepare('INSERT INTO chat_sessions (visitor_token, visitor_name, visitor_email) VALUES (?,?,?)')
-    .run(newToken, name || null, email || null);
+  db.prepare('INSERT INTO chat_sessions (visitor_token, visitor_name, visitor_email, company_id) VALUES (?,?,?,?)')
+    .run(newToken, name || null, email || null, companyId);
 
   const session = db.prepare('SELECT * FROM chat_sessions WHERE visitor_token = ?').get(newToken);
 
@@ -37,7 +68,7 @@ router.post('/session', (req, res) => {
 
 // ─── Update visitor info ─────────────────────────────
 router.post('/session/update', (req, res) => {
-  const db = getDb();
+  const db = safeGetDb(res); if (!db) return;
   const { token, name, email } = req.body;
   if (!token) return res.status(400).json({ error: 'Missing token' });
 
@@ -49,7 +80,7 @@ router.post('/session/update', (req, res) => {
 
 // ─── Send Message ────────────────────────────────────
 router.post('/message', async (req, res) => {
-  const db = getDb();
+  const db = safeGetDb(res); if (!db) return;
   const { token, content } = req.body;
   if (!token || !content) return res.status(400).json({ error: 'Missing fields' });
 
@@ -63,7 +94,7 @@ router.post('/message', async (req, res) => {
   // ─── Auto Pattern Detection (async, every 50 visitor messages) ───
   try {
     const msgCount = db.prepare("SELECT COUNT(*) as c FROM chat_messages WHERE sender_type='visitor'").get().c;
-    if (msgCount > 0 && msgCount % 50 === 0 && ai.isConfigured()) {
+    if (msgCount > 0 && msgCount % 50 === 0 && ai.isAvailableForTenant(res.locals.tenant)) {
       const pendingCount = db.prepare("SELECT COUNT(*) as c FROM ai_article_suggestions WHERE status='pending'").get().c;
       if (pendingCount < 10) { // Don't pile up too many suggestions
         console.log('[Chat] Auto-triggering pattern analysis (message #' + msgCount + ')');
@@ -110,9 +141,11 @@ router.post('/message', async (req, res) => {
 
   // If in human mode, also save to ticket_messages
   if (session.status === 'human' && session.ticket_id) {
-    // Use a system user for visitor messages in tickets
-    db.prepare('INSERT INTO ticket_messages (ticket_id, user_id, content, is_internal) VALUES (?,4,?,0)')
-      .run(session.ticket_id, `💬 [${session.visitor_name || 'Visiteur'}]: ${content}`);
+    // Get first admin user for message attribution
+    const sysUser = db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get();
+    const sysUserId = sysUser ? sysUser.id : 1;
+    db.prepare('INSERT INTO ticket_messages (ticket_id, user_id, content, is_internal) VALUES (?,?,?,0)')
+      .run(session.ticket_id, sysUserId, `💬 [${session.visitor_name || 'Visiteur'}]: ${content}`);
     db.prepare('UPDATE tickets SET updated_at=CURRENT_TIMESTAMP WHERE id=?').run(session.ticket_id);
 
     // Notify support via Socket.io
@@ -143,10 +176,15 @@ router.post('/message', async (req, res) => {
   }
 
   // AI mode: generate response
-  if (session.status === 'ai' && ai.isConfigured()) {
+  if (session.status === 'ai' && ai.isAvailableForTenant(res.locals.tenant)) {
     try {
       // ─── FAQ-First Search: try to answer from existing articles (FREE) ───
-      const faqFirst = getSetting('ai_livechat_faq_first', '1') === '1';
+      let faqFirst = getSetting('ai_livechat_faq_first', '1') === '1';
+      // Use company-specific setting if available
+      if (session.company_id) {
+        const comp = db.prepare('SELECT ai_livechat_faq_first FROM companies WHERE id = ?').get(session.company_id);
+        if (comp) faqFirst = !!comp.ai_livechat_faq_first;
+      }
 
       // Shared stopwords list for both FAQ-first and KB search
       const stopwords = new Set(['the','a','an','is','are','was','were','be','been','have','has','had','do','does','did','will','would','shall','should','may','might','must','can','could','i','me','my','we','our','you','your','he','she','it','they','them','their','this','that','what','which','who','how','when','where','why','in','on','at','to','for','with','from','of','and','or','but','not','no','if','so','as','by','up','out','about','into','les','la','le','un','une','des','du','de','est','sont','pour','dans','sur','avec','que','qui','quoi','quel','quelle','comment','pas','ne','se','ce','ces','mon','ton','son','nous','vous','ils','elles','et','ou','mais','donc','car','je','tu','il','elle','on','chez','par','en','au','aux','quelles','quels','phidias','propfirm','trading','trader','traders','compte','comptes','account','accounts']);
@@ -156,7 +194,10 @@ router.post('/message', async (req, res) => {
       const qKeywords = userQ.split(/\s+/).filter(w => w.length > 2 && !stopwords.has(w));
 
       if (faqFirst && qKeywords.length > 0) {
-        const faqArticles = db.prepare('SELECT id, title, slug, content, excerpt FROM articles WHERE is_published=1 AND is_public=1').all();
+        let faqFirstSQL = 'SELECT id, title, slug, content, excerpt, company_id FROM articles WHERE is_published=1 AND is_public=1';
+        const faqFirstParams = [];
+        if (session.company_id) { faqFirstSQL += ' AND (company_id = ? OR company_id IS NULL)'; faqFirstParams.push(session.company_id); }
+        const faqArticles = db.prepare(faqFirstSQL).all(...faqFirstParams);
         let bestMatch = null;
         let bestScore = 0;
 
@@ -182,7 +223,12 @@ router.post('/message', async (req, res) => {
         // High confidence threshold: need significant keyword overlap
         if (bestMatch && bestScore >= 4 && qKeywords.length >= 2) {
           const lang = req.session?.lang || 'fr';
-          const articleUrl = '/help/article/' + bestMatch.slug;
+          // Build company-scoped article URL
+          let articleUrl = '/help/article/' + bestMatch.slug;
+          if (bestMatch.company_id) {
+            const artCompany = db.prepare('SELECT slug FROM companies WHERE id = ?').get(bestMatch.company_id);
+            if (artCompany) articleUrl = '/help/c/' + artCompany.slug + '/article/' + bestMatch.slug;
+          }
           // Clean content: remove markdown headers for chat display, keep first ~1200 chars
           let cleanContent = bestMatch.content
             .replace(/^#{1,3}\s+/gm, '**') // ## Header → **Header
@@ -209,7 +255,10 @@ router.post('/message', async (req, res) => {
       }
 
       // ─── Smart KB Context: section-based search (simple RAG) ───
-      const kbEntries = db.prepare('SELECT title, content FROM knowledge_base WHERE is_active=1').all();
+      let kbSQL = 'SELECT title, content FROM knowledge_base WHERE is_active=1';
+      const kbParams = [];
+      if (session.company_id) { kbSQL += ' AND (company_id = ? OR company_id IS NULL)'; kbParams.push(session.company_id); }
+      const kbEntries = db.prepare(kbSQL).all(...kbParams);
       const userQuestion = content.toLowerCase();
 
       // Extract keywords from user question (reuse stopwords from above)
@@ -232,13 +281,9 @@ router.post('/message', async (req, res) => {
             continue;
           }
 
-          // ─── Split long content into MAJOR numbered sections ───
-          // Match patterns like "1. Title", "20. 25K Static", "## Title"
-          const sectionRegex = /\n(?=\d{1,2}\.\s+[A-Z0-9★◆■])|(?=\n#{1,3}\s)/g;
-          const rawSections = kb.content.split(sectionRegex).filter(s => s.trim().length > 20);
-
-          // If the split didn't work well (only 1 section), try alternative split
-          const sections = rawSections.length > 1 ? rawSections : kb.content.split(/\n\n(?=[A-Z0-9#★◆■])/).filter(s => s.trim().length > 20);
+          // ─── Split long content into searchable sections ───
+          const { splitKbIntoSections } = require('../database');
+          const sections = splitKbIntoSections(kb.content);
 
           // Merge very small consecutive sections (< 200 chars)
           const mergedSections = [];
@@ -300,18 +345,35 @@ router.post('/message', async (req, res) => {
       }
 
       // Gather FAQ articles — ALL published articles with links
-      const faqArticles = db.prepare('SELECT title, slug, content FROM articles WHERE is_published=1 AND is_public=1').all();
-      const faqContext = faqArticles.map(a => `[FAQ: ${a.title}] (link: /help/article/${a.slug}):\n${a.content.substring(0, 1000)}`).join('\n\n');
+      let faqSQL = 'SELECT a.title, a.slug, a.content, c.slug as company_slug FROM articles a LEFT JOIN companies c ON a.company_id = c.id WHERE a.is_published=1 AND a.is_public=1';
+      const faqParams = [];
+      if (session.company_id) { faqSQL += ' AND (a.company_id = ? OR a.company_id IS NULL)'; faqParams.push(session.company_id); }
+      const faqArticles = db.prepare(faqSQL).all(...faqParams);
+      const faqContext = faqArticles.map(a => {
+        const link = a.company_slug ? `/help/c/${a.company_slug}/article/${a.slug}` : `/help/article/${a.slug}`;
+        return `[FAQ: ${a.title}] (link: ${link}):\n${a.content.substring(0, 1000)}`;
+      }).join('\n\n');
 
       // Get chat history (last 10 messages)
       const history = db.prepare('SELECT sender_type, content FROM chat_messages WHERE session_id=? ORDER BY created_at DESC LIMIT 10').all(session.id).reverse();
 
       const lang = req.session?.lang || 'fr';
-      const companyName = getSetting('company_name', '');
-      const chatbotContext = getSetting('chatbot_context', '');
+
+      // Use company-specific context if available
+      let companyName = getSetting('company_name', '');
+      let chatbotContext = getSetting('chatbot_context', '');
+      let chatbotName = 'Assistant';
+      if (session.company_id) {
+        const comp = db.prepare('SELECT * FROM companies WHERE id = ?').get(session.company_id);
+        if (comp) {
+          companyName = comp.name;
+          chatbotContext = comp.chatbot_context || chatbotContext;
+          chatbotName = comp.chatbot_name || 'Assistant';
+        }
+      }
       console.log('[Chat] AI — Keywords:', keywords.join(', '), '| KB context:', knowledgeContext.length, 'chars | FAQ articles:', faqArticles.length, '| Company:', companyName || '(default)');
 
-      const aiResponse = await ai.livechatReply(history, knowledgeContext, faqContext, lang, companyName, chatbotContext);
+      const aiResponse = await ai.livechatReply(history, knowledgeContext, faqContext, lang, companyName, chatbotContext, res.locals.tenant);
 
       // Save AI response
       db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
@@ -332,12 +394,12 @@ router.post('/message', async (req, res) => {
     }
   }
 
-  // AI not configured — still return a message so the user isn't left hanging
-  console.log('[Chat] AI not configured — returning fallback');
+  // AI not available — return helpful fallback message
+  console.log('[Chat] AI not available — returning fallback');
   const lang = req.session?.lang || 'fr';
   const fallbackMsg = lang === 'fr'
-    ? 'L\'IA n\'est pas configurée pour le moment. Cliquez sur "Parler à un humain" pour contacter un agent.'
-    : 'AI is not configured. Click "Talk to a human" to contact an agent.';
+    ? 'Notre assistant automatique est indisponible pour le moment. Cliquez sur "Parler à un humain" pour être mis en relation avec un agent.'
+    : 'Our automated assistant is currently unavailable. Click "Talk to a human" to be connected with an agent.';
   db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
     .run(session.id, 'ai', 'Assistant', fallbackMsg);
   res.json({ ok: true, mode: session.status, aiMessage: { sender_type: 'ai', sender_name: 'Assistant', content: fallbackMsg, created_at: new Date().toISOString() } });
@@ -345,7 +407,7 @@ router.post('/message', async (req, res) => {
 
 // ─── Escalate to Human ──────────────────────────────
 router.post('/escalate', (req, res) => {
-  const db = getDb();
+  const db = safeGetDb(res); if (!db) return;
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'Missing token' });
 
@@ -364,8 +426,10 @@ router.post('/escalate', (req, res) => {
   const subject = `💬 Livechat — ${session.visitor_name || 'Visiteur'}`;
   const description = `${t.chat_ticket_desc}\n\n--- ${t.chat_ticket_history} ---\n${historyText}`;
 
-  db.prepare(`INSERT INTO tickets (reference, subject, description, category, client_name, client_email, created_by, status) VALUES (?,?,?,?,?,?,4,'in_progress')`)
-    .run(reference, subject, description, 'general', session.visitor_name || null, session.visitor_email || null);
+  const sysUser = db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get();
+  const sysUserId = sysUser ? sysUser.id : 1;
+  db.prepare(`INSERT INTO tickets (reference, subject, description, category, client_name, client_email, created_by, company_id, status) VALUES (?,?,?,?,?,?,?,?,'in_progress')`)
+    .run(reference, subject, description, 'general', session.visitor_name || null, session.visitor_email || null, sysUserId, session.company_id || null);
 
   const ticket = db.prepare('SELECT id FROM tickets WHERE reference=?').get(reference);
 
@@ -395,7 +459,7 @@ router.post('/escalate', (req, res) => {
 
 // ─── Poll for new messages (human mode) ──────────────
 router.get('/messages/:token', (req, res) => {
-  const db = getDb();
+  const db = safeGetDb(res); if (!db) return;
   const session = db.prepare('SELECT * FROM chat_sessions WHERE visitor_token = ?').get(req.params.token);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
@@ -408,7 +472,7 @@ router.get('/messages/:token', (req, res) => {
 
 // ─── Close Chat (visitor-initiated) ──────────────────
 router.post('/close', (req, res) => {
-  const db = getDb();
+  const db = safeGetDb(res); if (!db) return;
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'Missing token' });
 
@@ -431,8 +495,9 @@ router.post('/close', (req, res) => {
       .run(session.ticket_id);
 
     // Add internal note in ticket
-    db.prepare('INSERT INTO ticket_messages (ticket_id, user_id, content, is_internal) VALUES (?,4,?,1)')
-      .run(session.ticket_id, '💬 ' + t.chat_visitor_ended);
+    const closeUser = db.prepare("SELECT id FROM users WHERE role='admin' LIMIT 1").get();
+    db.prepare('INSERT INTO ticket_messages (ticket_id, user_id, content, is_internal) VALUES (?,?,?,1)')
+      .run(session.ticket_id, closeUser ? closeUser.id : 1, '💬 ' + t.chat_visitor_ended);
 
     // Notify support via Socket.io
     const io = req.app.get('io');

@@ -3,10 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><%= typeof title !== 'undefined' ? title + ' — ' : '' %>ProjectHub</title>
+  <title><%= typeof title !== 'undefined' ? title + ' — ' : '' %><%= (typeof tenant !== 'undefined' && tenant && tenant.name) ? tenant.name : 'ProjectHub' %></title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
   <script src="/socket.io/socket.io.js"></script>
+  <% if (typeof tenant !== 'undefined' && tenant && tenant.brand_color && tenant.brand_color !== '#6366f1') { %>
+  <style>
+    :root {
+      --primary: <%= tenant.brand_color %>;
+      --primary-dark: <%= tenant.brand_color_dark || tenant.brand_color %>;
+      --primary-light: <%= tenant.brand_color %>18;
+    }
+  </style>
+  <% } %>
 </head>
 <body>
 <div class="app-layout">

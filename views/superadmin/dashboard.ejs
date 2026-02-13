@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ProjectHub — Platform Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    body { background: #0a0a0f; }
+    .sa-wrapper { max-width: 1280px; margin: 0 auto; padding: 1.5rem; }
+    .sa-topbar { display: flex; justify-content: space-between; align-items: center; padding: 1rem 0; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+    .sa-topbar-left { display: flex; align-items: center; gap: 1rem; }
+    .sa-badge { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.2); color: #ef4444; padding: .25rem .6rem; border-radius: 6px; font-size: .7rem; font-weight: 800; letter-spacing: .5px; }
+    .sa-topbar h1 { font-size: 1.3rem; font-weight: 800; }
+    .sa-topbar-right { display: flex; align-items: center; gap: 1rem; font-size: .85rem; color: var(--text-muted); }
+    .sa-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .sa-stat { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+    .sa-stat-value { font-size: 1.8rem; font-weight: 800; color: var(--text-primary); }
+    .sa-stat-label { font-size: .8rem; color: var(--text-muted); margin-top: .25rem; }
+    .sa-stat-accent { color: #ef4444; }
+    .sa-stat-green { color: #10b981; }
+    .sa-stat-blue { color: #6366f1; }
+    .sa-stat-yellow { color: #f59e0b; }
+    .sa-section { margin-bottom: 2rem; }
+    .sa-section h2 { font-size: 1.1rem; font-weight: 800; margin-bottom: 1rem; display: flex; align-items: center; gap: .5rem; }
+    .sa-table { width: 100%; border-collapse: collapse; }
+    .sa-table th { text-align: left; padding: .6rem .75rem; font-size: .75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--border); }
+    .sa-table td { padding: .7rem .75rem; border-bottom: 1px solid rgba(255,255,255,.04); font-size: .85rem; }
+    .sa-table tr:hover { background: rgba(255,255,255,.02); }
+    .sa-table a { color: var(--primary); text-decoration: none; font-weight: 600; }
+    .sa-table a:hover { text-decoration: underline; }
+    .sa-plan-badge { display: inline-block; padding: .15rem .5rem; border-radius: 4px; font-size: .7rem; font-weight: 700; text-transform: uppercase; }
+    .sa-plan-trial { background: rgba(245,158,11,.1); color: #f59e0b; }
+    .sa-plan-starter { background: rgba(99,102,241,.1); color: #6366f1; }
+    .sa-plan-pro { background: rgba(16,185,129,.1); color: #10b981; }
+    .sa-plan-enterprise { background: rgba(239,68,68,.1); color: #ef4444; }
+    .sa-active { color: #10b981; } .sa-inactive { color: #ef4444; }
+    .sa-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 768px) { .sa-grid-2 { grid-template-columns: 1fr; } .sa-stats { grid-template-columns: repeat(2, 1fr); } }
+    .card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem; }
+  </style>
+</head>
+<body>
+  <div class="sa-wrapper">
+
+    <!-- Topbar -->
+    <div class="sa-topbar">
+      <div class="sa-topbar-left">
+        <span class="sa-badge">🔐 PLATFORM ADMIN</span>
+        <h1>ProjectHub Control</h1>
+      </div>
+      <div class="sa-topbar-right">
+        <span><%= email %></span>
+        <a href="/superadmin/logout" style="color:#ef4444;text-decoration:none;font-weight:600">Déconnexion</a>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="sa-stats">
+      <div class="sa-stat">
+        <div class="sa-stat-value"><%= totalTenants %></div>
+        <div class="sa-stat-label">Clients total</div>
+      </div>
+      <div class="sa-stat">
+        <div class="sa-stat-value sa-stat-green"><%= activeTenants %></div>
+        <div class="sa-stat-label">Clients actifs</div>
+      </div>
+      <div class="sa-stat">
+        <div class="sa-stat-value sa-stat-yellow"><%= trialTenants %></div>
+        <div class="sa-stat-label">En essai gratuit</div>
+      </div>
+      <div class="sa-stat">
+        <div class="sa-stat-value sa-stat-blue"><%= paidTenants %></div>
+        <div class="sa-stat-label">Clients payants</div>
+      </div>
+      <div class="sa-stat">
+        <div class="sa-stat-value sa-stat-green">€<%= mrr %></div>
+        <div class="sa-stat-label">MRR estimé</div>
+      </div>
+      <div class="sa-stat">
+        <div class="sa-stat-value sa-stat-accent">$<%= totalAiCost.toFixed(2) %></div>
+        <div class="sa-stat-label">Coût IA (30j)</div>
+      </div>
+    </div>
+
+    <div class="sa-grid-2">
+
+      <!-- AI Usage per tenant -->
+      <div class="sa-section">
+        <h2>📊 Consommation IA par client (30j)</h2>
+        <div class="card" style="padding:0;overflow:hidden">
+          <table class="sa-table">
+            <thead>
+              <tr><th>Client</th><th>Plan</th><th>Appels</th><th>Tokens</th><th>Coût</th></tr>
+            </thead>
+            <tbody>
+              <% if (tenantAiUsage.length === 0) { %>
+                <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:1.5rem">Aucune consommation enregistrée</td></tr>
+              <% } %>
+              <% tenantAiUsage.forEach(u => { %>
+                <tr>
+                  <td><a href="/superadmin/tenant/<%= u.tenant_id %>"><%= u.name %></a></td>
+                  <td><span class="sa-plan-badge sa-plan-<%= u.plan %>"><%= u.plan %></span></td>
+                  <td><%= u.calls %></td>
+                  <td><%= (u.tokens / 1000).toFixed(1) %>K</td>
+                  <td><strong>$<%= u.cost.toFixed(4) %></strong></td>
+                </tr>
+              <% }) %>
+              <tr style="background:rgba(239,68,68,.05);font-weight:700">
+                <td colspan="2">TOTAL</td>
+                <td><%= totalAiCalls %></td>
+                <td><%= (totalAiTokens / 1000).toFixed(1) %>K</td>
+                <td style="color:#ef4444">$<%= totalAiCost.toFixed(4) %></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Plans distribution -->
+      <div class="sa-section">
+        <h2>📋 Répartition des plans</h2>
+        <div class="card">
+          <% planStats.forEach(p => { %>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.04)">
+              <span><span class="sa-plan-badge sa-plan-<%= p.plan_id %>"><%= p.plan_id %></span> <span style="margin-left:.5rem"><%= p.name %></span></span>
+              <strong><%= p.count %> client(s)</strong>
+            </div>
+          <% }) %>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- All Tenants -->
+    <div class="sa-section">
+      <h2>🏢 Tous les clients (<%= totalTenants %>)</h2>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="sa-table">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Slug</th>
+              <th>Plan</th>
+              <th>Utilisateurs</th>
+              <th>IA</th>
+              <th>Statut</th>
+              <th>Créé le</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% tenants.forEach(t => { %>
+              <tr>
+                <td><strong><%= t.name %></strong></td>
+                <td style="font-family:monospace;font-size:.8rem;color:var(--text-muted)"><%= t.slug %></td>
+                <td><span class="sa-plan-badge sa-plan-<%= t.plan_id %>"><%= t.plan_id %></span></td>
+                <td><%= t.account_count %></td>
+                <td><%= t.ai_enabled ? '✅' : '❌' %></td>
+                <td><span class="<%= t.is_active ? 'sa-active' : 'sa-inactive' %>"><%= t.is_active ? '● Actif' : '● Inactif' %></span></td>
+                <td style="color:var(--text-muted);font-size:.8rem"><%= new Date(t.created_at).toLocaleDateString('fr-FR') %></td>
+                <td><a href="/superadmin/tenant/<%= t.id %>">Gérer →</a></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

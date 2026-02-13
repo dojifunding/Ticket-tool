@@ -64,6 +64,18 @@
       </select>
     </div>
 
+    <% if (typeof companies !== 'undefined' && companies.length > 0) { %>
+      <div class="form-group">
+        <label for="company_id">🏢 Entreprise</label>
+        <select id="company_id" name="company_id">
+          <option value="">— Aucune —</option>
+          <% companies.forEach(c => { %>
+            <option value="<%= c.id %>"><%= c.name %></option>
+          <% }) %>
+        </select>
+      </div>
+    <% } %>
+
     <div class="form-actions">
       <a href="/tickets" class="btn btn-ghost"><%= t.cancel %></a>
       <button type="submit" class="btn btn-primary"><%= t.ticket_form_create %></button>

@@ -1,0 +1,108 @@
+<% const base = typeof helpBase !== "undefined" ? helpBase : "/help"; %>
+<% const companyName = (typeof company !== "undefined" && company) ? company.name : (typeof tenant !== "undefined" && tenant) ? tenant.name : "ProjectHub"; %>
+<% const companyColor = (typeof brandColor !== "undefined") ? brandColor : "#6366f1"; %>
+<!DOCTYPE html>
+<html lang="<%= t.lang %>">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> — <%= (typeof tenant !== 'undefined' && tenant && tenant.name) ? tenant.name : 'ProjectHub' %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/help.css">
+  <% if (typeof tenant !== 'undefined' && tenant && tenant.brand_color && tenant.brand_color !== '#6366f1') { %>
+  <style>:root { --primary: <%= tenant.brand_color %>; --primary-dark: <%= tenant.brand_color_dark || tenant.brand_color %>; }</style>
+  <% } %>
+</head>
+<body class="help-body">
+  <nav class="help-nav">
+    <div class="help-nav-inner">
+      <a href="<%= base %>" class="help-logo">
+        <% if (typeof tenant !== 'undefined' && tenant && tenant.logo_url) { %><img src="<%= tenant.logo_url %>" alt="" style="width:30px;height:30px;border-radius:6px;object-fit:contain"><% } else { %><div class="logo-icon"><%= (typeof tenant !== 'undefined' && tenant && tenant.name) ? tenant.name.charAt(0).toUpperCase() : 'P' %></div><% } %>
+        <span><%= t.help_title %></span>
+      </a>
+      <div class="help-nav-actions">
+        <a href="<%= base %>/submit" class="btn btn-primary btn-sm"><%= t.help_submit_nav %></a>
+        <a href="<%= base %>/my-tickets" class="btn btn-ghost btn-sm">📋 <%= t.help_my_tickets || 'Mes demandes' %></a>
+        <div class="lang-toggle lang-toggle-multi">
+          <a href="/lang/fr" class="lang-btn <%= t.lang === 'fr' ? 'active' : '' %>">FR</a>
+          <a href="/lang/en" class="lang-btn <%= t.lang === 'en' ? 'active' : '' %>">EN</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="help-main">
+    <div class="help-breadcrumb">
+      <a href="<%= base %>"><%= t.help_title %></a>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+      <span><%= t.help_my_tickets || 'Mes demandes' %></span>
+    </div>
+
+    <div class="help-submit-container">
+      <h1 style="margin-bottom:.5rem">📋 <%= t.help_my_tickets || 'Mes demandes' %></h1>
+      <p style="color:var(--text-muted);margin-bottom:1.5rem"><%= t.help_my_tickets_desc || 'Retrouvez et suivez toutes vos demandes de support.' %></p>
+
+      <!-- Email lookup form -->
+      <form method="GET" action="<%= base %>/my-tickets" class="help-form" style="margin-bottom:2rem">
+        <div class="form-group">
+          <label><%= t.help_my_tickets_email || 'Votre adresse email' %></label>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <input type="email" name="email" value="<%= email %>" required placeholder="votre@email.com" style="flex:1;max-width:400px">
+            <button type="submit" class="btn btn-primary"><%= t.help_my_tickets_search || 'Rechercher' %></button>
+          </div>
+          <p style="font-size:.8rem;color:var(--text-muted);margin-top:.25rem"><%= t.help_my_tickets_email_hint || 'Utilisez l\'email que vous avez renseigné lors de vos demandes.' %></p>
+        </div>
+      </form>
+
+      <% if (email && tickets.length === 0) { %>
+        <div style="text-align:center;padding:2rem;background:var(--bg-tertiary);border-radius:var(--radius);border:1px solid var(--border)">
+          <p style="font-size:1.2rem;margin-bottom:.5rem">🔍</p>
+          <p style="color:var(--text-muted)"><%= t.help_my_tickets_none || 'Aucune demande trouvée pour cette adresse email.' %></p>
+          <a href="<%= base %>/submit" class="btn btn-primary" style="margin-top:1rem"><%= t.help_submit_nav %></a>
+        </div>
+      <% } %>
+
+      <% if (tickets.length > 0) { %>
+        <div class="my-tickets-list">
+          <% tickets.forEach(ticket => { %>
+            <a href="/help/my-tickets/<%= ticket.reference %>" class="my-ticket-card">
+              <div class="my-ticket-header">
+                <span class="my-ticket-ref"><%= ticket.reference %></span>
+                <span class="my-ticket-status status-<%= ticket.status %>">
+                  <%= ticket.status === 'open' ? '🟢 Ouvert' : ticket.status === 'in_progress' ? '🔵 En cours' : ticket.status === 'waiting' ? '🟡 En attente' : ticket.status === 'resolved' ? '✅ Résolu' : '⚫ Fermé' %>
+                </span>
+              </div>
+              <div class="my-ticket-subject"><%= ticket.subject %></div>
+              <div class="my-ticket-meta">
+                <span>📅 <%= new Date(ticket.created_at).toLocaleDateString(dateLocale) %></span>
+                <span>💬 <%= ticket.message_count %> message(s)</span>
+              </div>
+            </a>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </main>
+
+  <footer class="help-footer">
+    <p>&copy; <%= new Date().getFullYear() %> <%= (typeof tenant !== 'undefined' && tenant && tenant.name) ? tenant.name : 'ProjectHub' %></p>
+  </footer>
+
+  <style>
+    .my-tickets-list { display: flex; flex-direction: column; gap: .75rem; }
+    .my-ticket-card {
+      display: block; padding: 1rem 1.25rem; background: var(--bg-secondary); border: 1px solid var(--border);
+      border-radius: var(--radius); text-decoration: none; color: inherit; transition: all .2s;
+    }
+    .my-ticket-card:hover { border-color: var(--primary); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+    .my-ticket-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; }
+    .my-ticket-ref { font-family: monospace; font-size: .8rem; color: var(--primary); font-weight: 700; background: rgba(99,102,241,.1); padding: .15rem .5rem; border-radius: 4px; }
+    .my-ticket-status { font-size: .8rem; font-weight: 600; }
+    .my-ticket-subject { font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: .4rem; }
+    .my-ticket-meta { display: flex; gap: 1.25rem; font-size: .8rem; color: var(--text-muted); }
+    .status-open { color: #10b981; } .status-in_progress { color: #6366f1; }
+    .status-waiting { color: #f59e0b; } .status-resolved, .status-closed { color: #6b7280; }
+  </style>
+</body>
+</html>

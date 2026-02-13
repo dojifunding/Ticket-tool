@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="<%= t.lang %>">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= t.help_title %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/help.css">
+</head>
+<body class="help-body">
+  <nav class="help-nav">
+    <div class="help-nav-inner">
+      <a href="/help" class="help-logo">
+        <div class="logo-icon">P</div>
+        <span><%= t.help_title %></span>
+      </a>
+      <div class="help-nav-actions">
+        <% if (user) { %>
+          <a href="/" class="btn btn-ghost btn-sm"><%= t.help_back_app %></a>
+        <% } else { %>
+          <a href="/login" class="btn btn-ghost btn-sm"><%= t.login_submit %></a>
+        <% } %>
+      </div>
+    </div>
+  </nav>
+
+  <header class="help-hero">
+    <h1><%= t.help_hero_title %></h1>
+    <p>Sélectionnez un espace pour accéder à son centre d'aide</p>
+  </header>
+
+  <main class="help-main">
+    <section class="hub-grid">
+      <% companies.forEach(c => { %>
+        <a href="/help/c/<%= c.slug %>" class="hub-card">
+          <div class="hub-card-icon" style="background: <%= c.brand_color || '#6366f1' %>20; color: <%= c.brand_color || '#6366f1' %>">
+            <% if (c.logo_url) { %>
+              <img src="<%= c.logo_url %>" alt="<%= c.name %>" style="width:48px;height:48px;border-radius:10px;object-fit:contain">
+            <% } else { %>
+              <span style="font-size:2rem;font-weight:700"><%= c.name.charAt(0).toUpperCase() %></span>
+            <% } %>
+          </div>
+          <h3><%= c.name %></h3>
+          <% if (c.description) { %><p class="hub-card-desc"><%= c.description %></p><% } %>
+          <span class="hub-card-count"><%= c.article_count %> article(s)</span>
+        </a>
+      <% }) %>
+    </section>
+  </main>
+
+  <footer class="help-footer">
+    <p>© <%= new Date().getFullYear() %> — <%= t.help_footer %></p>
+  </footer>
+
+  <style>
+    .hub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; max-width: 900px; margin: 0 auto; }
+    .hub-card { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 2rem 1.5rem; background: var(--bg); border: 1px solid var(--border); border-radius: 16px; text-decoration: none; color: inherit; transition: all .2s; }
+    .hub-card:hover { border-color: var(--primary); transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+    .hub-card-icon { width: 80px; height: 80px; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin-bottom: 1rem; }
+    .hub-card h3 { margin: 0 0 .5rem; font-size: 1.25rem; font-weight: 700; }
+    .hub-card-desc { color: var(--text-muted); font-size: .85rem; margin: 0 0 .5rem; line-height: 1.4; }
+    .hub-card-count { font-size: .75rem; color: var(--text-muted); padding: .25rem .75rem; background: var(--bg-secondary); border-radius: 20px; margin-top: auto; }
+  </style>
+</body>
+</html>

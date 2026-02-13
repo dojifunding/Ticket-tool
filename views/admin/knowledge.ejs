@@ -2,10 +2,27 @@
 
 <div class="page-header">
   <div>
-    <h1 class="page-title"><%= t.kb_title %></h1>
+    <h1 class="page-title"><%= (typeof selectedCompany !== 'undefined' && selectedCompany) ? selectedCompany.name + ' — ' : '' %><%= t.kb_title %></h1>
     <p class="page-subtitle"><%= entries.length %> <%= t.kb_count %></p>
   </div>
+  <div class="header-btns">
+    <% if (typeof selectedCompany !== 'undefined' && selectedCompany) { %>
+      <a href="/admin/companies/<%= selectedCompany.id %>/workspace" class="btn btn-ghost btn-sm">⚙️ Workspace</a>
+    <% } %>
+  </div>
 </div>
+
+<% if (typeof companies !== 'undefined' && companies.length > 0) { %>
+<div class="filters-bar" style="margin-bottom:1rem">
+  <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+    <span style="font-size:.85rem;font-weight:600">🏢 Entreprise :</span>
+    <a href="/admin/knowledge" class="btn btn-xs <%= !companyId ? 'btn-primary' : 'btn-ghost' %>">Toutes</a>
+    <% companies.forEach(c => { %>
+      <a href="/admin/knowledge?company=<%= c.id %>" class="btn btn-xs <%= companyId == c.id ? 'btn-primary' : 'btn-ghost' %>"><%= c.name %></a>
+    <% }) %>
+  </div>
+</div>
+<% } %>
 
 <% if (typeof flash !== 'undefined' && flash) { %>
   <div class="alert alert-<%= flash.type === 'success' ? 'success' : 'error' %>" style="margin-bottom:1rem">
@@ -36,6 +53,7 @@
   <!-- Text Input -->
   <div class="kb-tab-content active" id="kbTabText">
     <form method="POST" action="/admin/knowledge/add-text" class="kb-form">
+      <input type="hidden" name="company_id" value="<%= typeof companyId !== 'undefined' && companyId ? companyId : '' %>">
       <div class="form-row">
         <div class="form-group form-group-lg">
           <label><%= t.kb_entry_title %></label>
@@ -97,6 +115,7 @@
   <!-- File Upload -->
   <div class="kb-tab-content" id="kbTabFile">
     <form method="POST" action="/admin/knowledge/add-file" enctype="multipart/form-data" class="kb-form">
+      <input type="hidden" name="company_id" value="<%= typeof companyId !== 'undefined' && companyId ? companyId : '' %>">
       <div class="form-group">
         <label><%= t.kb_file_label %></label>
         <input type="file" name="file" required accept=".txt,.md,.csv,.json,.png,.jpg,.jpeg,.gif,.webp,.pdf">
@@ -127,6 +146,9 @@
             <%= entry.source_type %>
           </span>
           <strong><%= entry.title %></strong>
+          <% if (entry.company_name && !(typeof companyId !== 'undefined' && companyId)) { %>
+            <span class="company-tag" style="margin-left:.25rem"><%= entry.company_name %></span>
+          <% } %>
         </div>
         <div class="kb-entry-actions">
           <span class="text-muted text-sm"><%= entry.author_name %> · <%= new Date(entry.created_at).toLocaleDateString(dateLocale) %></span>
@@ -161,6 +183,7 @@
 
       <!-- Edit form (hidden) -->
       <form method="POST" action="/admin/knowledge/<%= entry.id %>/update" class="kb-edit-form" id="kbEdit<%= entry.id %>" style="display:none">
+        <input type="hidden" name="company_id" value="<%= entry.company_id || '' %>">
         <div class="form-group">
           <input type="text" name="title" value="<%= entry.title %>">
         </div>
@@ -243,7 +266,7 @@ async function importSingleUrl() {
     const res = await fetch('/admin/knowledge/import-single-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url })
+      body: JSON.stringify({ url, company_id: '<%= typeof companyId !== "undefined" && companyId ? companyId : "" %>' })
     });
 
     // Guard against HTML error responses
@@ -321,7 +344,7 @@ async function importBulkUrls() {
       const res = await fetch('/admin/knowledge/import-single-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ url, company_id: '<%= typeof companyId !== "undefined" && companyId ? companyId : "" %>' })
       });
       const data = await res.json();
       if (data.jobId) {

@@ -17,7 +17,6 @@ function createKbJob(asyncFn) {
   asyncFn()
     .then(result => kbJobs.set(jobId, { status: 'done', result }))
     .catch(err => kbJobs.set(jobId, { status: 'error', error: err.message }));
-  // Cleanup old jobs
   for (const [id, j] of kbJobs) { if (Date.now() - j.created > 600000) kbJobs.delete(id); }
   return jobId;
 }
@@ -36,25 +35,41 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['.txt', '.md', '.csv', '.json', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, allowed.includes(ext));
+    cb(null, allowed.includes(path.extname(file.originalname).toLowerCase()));
   }
 });
 
-// ─── Helper: render KB page with flash ───────────────
+// ─── Helper: get company filter from query ──────────
+function getCompanyId(req) {
+  return req.query.company ? parseInt(req.query.company) : (req.body.company_id ? parseInt(req.body.company_id) : null);
+}
+
+function companyRedirect(companyId) {
+  return '/admin/knowledge' + (companyId ? '?company=' + companyId : '');
+}
+
+// ─── Helper: render KB page ─────────────────────────
 function renderKB(req, res, flash) {
   const db = getDb();
-  const entries = db.prepare(`
-    SELECT kb.*, u.full_name as author_name
+  const companyId = getCompanyId(req);
+
+  let sql = `
+    SELECT kb.*, u.full_name as author_name, co.name as company_name
     FROM knowledge_base kb
     LEFT JOIN users u ON kb.added_by = u.id
-    ORDER BY kb.created_at DESC
-  `).all();
+    LEFT JOIN companies co ON kb.company_id = co.id
+  `;
+  if (companyId) sql += ' WHERE kb.company_id = ' + companyId;
+  sql += ' ORDER BY kb.created_at DESC';
+
+  const entries = db.prepare(sql).all();
+  const companies = db.prepare('SELECT id, name FROM companies WHERE is_active = 1 ORDER BY name').all();
+  const selectedCompany = companyId ? db.prepare('SELECT * FROM companies WHERE id = ?').get(companyId) : null;
 
   res.render('admin/knowledge', {
-    entries,
+    entries, companies, companyId, selectedCompany,
     aiConfigured: ai.isConfigured(),
-    title: res.locals.t.kb_title,
+    title: selectedCompany ? selectedCompany.name + ' — ' + res.locals.t.kb_title : res.locals.t.kb_title,
     flash: flash || req.session._kbFlash || null
   });
   delete req.session._kbFlash;
@@ -67,31 +82,31 @@ router.get('/', (req, res) => renderKB(req, res));
 router.post('/add-text', (req, res) => {
   const db = getDb();
   const t = res.locals.t;
-  const { title, content } = req.body;
+  const { title, content, company_id } = req.body;
+  const cid = company_id ? parseInt(company_id) : null;
 
   if (!title || !content) {
     req.session._kbFlash = { type: 'error', msg: t.kb_flash_required };
-    return res.redirect('/admin/knowledge');
+    return res.redirect(companyRedirect(cid));
   }
 
-  db.prepare('INSERT INTO knowledge_base (title, content, source_type, added_by) VALUES (?,?,?,?)')
-    .run(title, content, 'text', req.session.user.id);
+  db.prepare('INSERT INTO knowledge_base (title, content, source_type, added_by, company_id) VALUES (?,?,?,?,?)')
+    .run(title, content, 'text', req.session.user.id, cid);
 
   logActivity(req.session.user.id, 'added', 'knowledge', 0, title);
   req.session._kbFlash = { type: 'success', msg: t.kb_flash_added.replace('{title}', title) };
-  res.redirect('/admin/knowledge');
+  res.redirect(companyRedirect(cid));
 });
 
 // ─── Add Single URL ──────────────────────────────────
 router.post('/add-url', (req, res) => {
   const db = getDb();
   const t = res.locals.t;
-  const { title, url } = req.body;
+  const { title, url, company_id } = req.body;
   const userId = req.session.user.id;
+  const cid = company_id ? parseInt(company_id) : null;
 
-  if (!url) {
-    return res.json({ ok: false, error: t.kb_flash_url_required || 'URL required' });
-  }
+  if (!url) return res.json({ ok: false, error: t.kb_flash_url_required || 'URL required' });
 
   const jobId = createKbJob(async () => {
     const result = await ai.extractFromUrl(url);
@@ -99,8 +114,8 @@ router.post('/add-url', (req, res) => {
       throw new Error(t.kb_flash_url_empty || 'No content extracted');
     }
     const finalTitle = title || 'Import: ' + url.substring(0, 60);
-    db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,?)')
-      .run(finalTitle, result.processed, 'url', url, userId);
+    db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by, company_id) VALUES (?,?,?,?,?,?)')
+      .run(finalTitle, result.processed, 'url', url, userId, cid);
     logActivity(userId, 'added', 'knowledge', 0, finalTitle);
     return { title: finalTitle, chars: result.processed.length, method: result.method };
   });
@@ -109,25 +124,18 @@ router.post('/add-url', (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-//  BULK URL IMPORT (AJAX with progress)
+//  BULK URL IMPORT
 // ═══════════════════════════════════════════════════════
 router.post('/import-urls', async (req, res) => {
   const db = getDb();
   const userId = req.session.user.id;
+  const cid = req.body.company_id ? parseInt(req.body.company_id) : null;
   let { urls } = req.body;
 
-  // Accept array or newline-separated string
-  if (typeof urls === 'string') {
-    urls = urls.split(/[\n\r]+/).map(u => u.trim()).filter(u => u && u.startsWith('http'));
-  }
-  if (!urls || urls.length === 0) {
-    return res.json({ ok: false, error: 'No valid URLs provided' });
-  }
-
-  // Cap at 50 URLs per batch
+  if (typeof urls === 'string') urls = urls.split(/[\n\r]+/).map(u => u.trim()).filter(u => u && u.startsWith('http'));
+  if (!urls || urls.length === 0) return res.json({ ok: false, error: 'No valid URLs provided' });
   if (urls.length > 50) urls = urls.slice(0, 50);
 
-  // Process URLs sequentially and stream results via SSE-like JSON array
   const results = [];
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
@@ -136,45 +144,37 @@ router.post('/import-urls', async (req, res) => {
     try {
       const data = await ai.extractFromUrl(url);
       if (!data.processed || data.processed.trim().length < 20) {
-        result.status = 'empty';
-        result.error = 'No content extracted';
+        result.status = 'empty'; result.error = 'No content extracted';
       } else {
         const title = 'Import: ' + url.replace(/https?:\/\//, '').substring(0, 60);
-        db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,?)')
-          .run(title, data.processed, 'url', url, userId);
+        db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by, company_id) VALUES (?,?,?,?,?,?)')
+          .run(title, data.processed, 'url', url, userId, cid);
         logActivity(userId, 'added', 'knowledge', 0, title);
-        result.status = 'success';
-        result.title = title;
-        result.chars = data.processed.length;
-        result.method = data.method || 'unknown';
+        result.status = 'success'; result.title = title; result.chars = data.processed.length; result.method = data.method || 'unknown';
       }
-    } catch (e) {
-      result.status = 'error';
-      result.error = e.message;
-    }
+    } catch (e) { result.status = 'error'; result.error = e.message; }
     results.push(result);
   }
 
   res.json({ ok: true, results });
 });
 
-// ─── Import Single URL via AJAX (for bulk progress) ──
+// ─── Import Single URL via AJAX ─────────────────────
 router.post('/import-single-url', (req, res) => {
   try {
     const db = getDb();
     const userId = req.session.user.id;
-    const { url } = req.body;
+    const { url, company_id } = req.body;
+    const cid = company_id ? parseInt(company_id) : null;
 
     if (!url) return res.json({ ok: false, error: 'No URL' });
 
     const jobId = createKbJob(async () => {
       const data = await ai.extractFromUrl(url);
-      if (!data.processed || data.processed.trim().length < 20) {
-        throw new Error('Aucun contenu extrait de cette URL.');
-      }
+      if (!data.processed || data.processed.trim().length < 20) throw new Error('Aucun contenu extrait de cette URL.');
       const title = 'Import: ' + url.replace(/https?:\/\//, '').substring(0, 60);
-      db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,?)')
-        .run(title, data.processed, 'url', url, userId);
+      db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by, company_id) VALUES (?,?,?,?,?,?)')
+        .run(title, data.processed, 'url', url, userId, cid);
       logActivity(userId, 'added', 'knowledge', 0, title);
       return { ok: true, title, chars: data.processed.length, method: data.method, url };
     });
@@ -190,10 +190,11 @@ router.post('/import-single-url', (req, res) => {
 router.post('/add-file', upload.single('file'), async (req, res) => {
   const db = getDb();
   const t = res.locals.t;
+  const cid = req.body.company_id ? parseInt(req.body.company_id) : null;
 
   if (!req.file) {
     req.session._kbFlash = { type: 'error', msg: t.kb_flash_file_required };
-    return res.redirect('/admin/knowledge');
+    return res.redirect(companyRedirect(cid));
   }
 
   const ext = path.extname(req.file.originalname).toLowerCase();
@@ -211,7 +212,7 @@ router.post('/add-file', upload.single('file'), async (req, res) => {
         const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
         content = await ai.analyzeImage(base64, mimeMap[ext] || 'image/png', req.body.instruction || null);
       } else {
-        content = `[Image: ${req.file.originalname}] — AI not configured.`;
+        content = `[Image: ${req.file.originalname}] — Analyse IA indisponible.`;
       }
     } else if (ext === '.pdf') {
       content = `[PDF: ${req.file.originalname}] — PDF content: ` + (req.body.description || 'No description.');
@@ -220,11 +221,11 @@ router.post('/add-file', upload.single('file'), async (req, res) => {
     if (!content || content.trim().length < 5) {
       req.session._kbFlash = { type: 'error', msg: t.kb_flash_file_empty };
       try { fs.unlinkSync(req.file.path); } catch (e) {}
-      return res.redirect('/admin/knowledge');
+      return res.redirect(companyRedirect(cid));
     }
 
-    db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by) VALUES (?,?,?,?,?)')
-      .run(title, content, ext.match(/\.(png|jpg|jpeg|gif|webp)$/i) ? 'image' : 'file', req.file.originalname, req.session.user.id);
+    db.prepare('INSERT INTO knowledge_base (title, content, source_type, source_ref, added_by, company_id) VALUES (?,?,?,?,?,?)')
+      .run(title, content, ext.match(/\.(png|jpg|jpeg|gif|webp)$/i) ? 'image' : 'file', req.file.originalname, req.session.user.id, cid);
     logActivity(req.session.user.id, 'added', 'knowledge', 0, title);
     req.session._kbFlash = { type: 'success', msg: t.kb_flash_added.replace('{title}', title) };
   } catch (e) {
@@ -233,23 +234,23 @@ router.post('/add-file', upload.single('file'), async (req, res) => {
   }
 
   try { fs.unlinkSync(req.file.path); } catch (e) {}
-  res.redirect('/admin/knowledge');
+  res.redirect(companyRedirect(cid));
 });
 
 // ─── Edit / Toggle / Delete ──────────────────────────
 router.post('/:id/update', (req, res) => {
   const db = getDb();
-  const { title, content } = req.body;
+  const { title, content, company_id } = req.body;
   db.prepare('UPDATE knowledge_base SET title=?, content=? WHERE id=?').run(title, content, req.params.id);
   req.session._kbFlash = { type: 'success', msg: '✅' };
-  res.redirect('/admin/knowledge');
+  res.redirect(companyRedirect(company_id ? parseInt(company_id) : null));
 });
 
 router.post('/:id/toggle', (req, res) => {
   const db = getDb();
-  const entry = db.prepare('SELECT is_active FROM knowledge_base WHERE id=?').get(req.params.id);
+  const entry = db.prepare('SELECT is_active, company_id FROM knowledge_base WHERE id=?').get(req.params.id);
   if (entry) db.prepare('UPDATE knowledge_base SET is_active=? WHERE id=?').run(entry.is_active ? 0 : 1, req.params.id);
-  res.redirect('/admin/knowledge');
+  res.redirect(companyRedirect(entry ? entry.company_id : null));
 });
 
 // ─── Re-scrape URL KB Entry (async) ──────────────────
@@ -277,8 +278,9 @@ router.post('/:id/rescrape', (req, res) => {
 
 router.post('/:id/delete', (req, res) => {
   const db = getDb();
+  const entry = db.prepare('SELECT company_id FROM knowledge_base WHERE id=?').get(req.params.id);
   db.prepare('DELETE FROM knowledge_base WHERE id=?').run(req.params.id);
-  res.redirect('/admin/knowledge');
+  res.redirect(companyRedirect(entry ? entry.company_id : null));
 });
 
 module.exports = router;

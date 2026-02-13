@@ -169,6 +169,13 @@ input, select, textarea, button {
   border-radius: 14px;
 }
 
+.logo-img {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
 .logo-text {
   font-weight: 700;
   font-size: 17px;
@@ -2254,3 +2261,67 @@ input, select, textarea, button {
 .lang-badge { font-size: 0.65rem; padding: 1px 4px; border-radius: 3px; font-weight: 600; letter-spacing: 0.3px; }
 .lang-badge-ok { background: rgba(16,185,129,0.15); color: #10b981; }
 .lang-badge-miss { background: rgba(255,255,255,0.05); color: var(--text-muted); opacity: 0.4; }
+
+/* ═══════════════════════════════════════════════════════
+   REGISTER PAGE
+   ═══════════════════════════════════════════════════════ */
+
+.register-card { max-width: 520px; }
+
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+.trial-badge {
+  display: flex; align-items: center; gap: .5rem;
+  background: rgba(99,102,241,.08); border: 1px solid rgba(99,102,241,.15);
+  border-radius: 10px; padding: .75rem 1rem; margin-bottom: 1.5rem;
+  color: var(--accent); font-size: .8rem; font-weight: 500;
+}
+.trial-badge svg { flex-shrink: 0; }
+
+.register-footer { text-align: center; margin-top: 1.5rem; }
+.register-footer p { color: var(--text-muted); font-size: .9rem; margin: 0; }
+.register-footer a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.register-footer a:hover { text-decoration: underline; }
+
+.trial-features {
+  display: grid; grid-template-columns: 1fr 1fr; gap: .5rem;
+  margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border);
+}
+.trial-feature {
+  display: flex; align-items: center; gap: .5rem;
+  font-size: .8rem; color: var(--text-muted); padding: .35rem 0;
+}
+.trial-feature-icon { font-size: 1rem; }
+
+@media (max-width: 480px) {
+  .form-row { grid-template-columns: 1fr; }
+  .trial-features { grid-template-columns: 1fr; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   TRIAL SIDEBAR BANNER
+   ═══════════════════════════════════════════════════════ */
+
+.trial-sidebar-banner {
+  display: flex; align-items: center; gap: .6rem;
+  background: linear-gradient(135deg, rgba(245,158,11,.1), rgba(245,158,11,.05));
+  border: 1px solid rgba(245,158,11,.2);
+  border-radius: 10px; margin: .75rem; padding: .65rem .85rem;
+}
+.trial-banner-icon { font-size: 1.3rem; }
+.trial-banner-text {
+  display: flex; flex-direction: column; gap: .1rem;
+}
+.trial-banner-text strong { font-size: .75rem; color: #f59e0b; }
+.trial-banner-text span { font-size: .7rem; color: var(--text-muted); }
+
+/* Company tag */
+.company-tag { display: inline-flex; align-items: center; gap: .3rem; font-size: .75rem; padding: .15rem .45rem; border-radius: 10px; background: rgba(99,102,241,.08); color: var(--primary); border: 1px solid rgba(99,102,241,.15); white-space: nowrap; }
+
+
+/* ─── Company Badges (Ticket Detail) ──────────────── */
+.company-badge-lg { display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .7rem; border-radius: 8px; font-size: .8rem; font-weight: 600; background: color-mix(in srgb, var(--company-color, #6366f1) 10%, transparent); color: var(--company-color, #6366f1); border: 1px solid color-mix(in srgb, var(--company-color, #6366f1) 20%, transparent); white-space: nowrap; vertical-align: middle; }
+.company-badge-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.company-link { display: inline-flex; align-items: center; gap: .3rem; color: var(--company-color, var(--primary)); text-decoration: none; font-weight: 600; font-size: .85rem; }
+.company-link:hover { text-decoration: underline; }
+.meta-company { padding-bottom: .5rem; margin-bottom: .25rem; border-bottom: 1px solid var(--border); }

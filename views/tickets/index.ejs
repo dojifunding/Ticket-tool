@@ -53,6 +53,15 @@
       <option value="me" <%= filters.assigned === 'me' ? 'selected' : '' %>><%= t.tickets_filter_my %></option>
       <option value="unassigned" <%= filters.assigned === 'unassigned' ? 'selected' : '' %>><%= t.tickets_filter_unassigned %></option>
     </select>
+    <% if (typeof companies !== 'undefined' && companies.length > 0) { %>
+      <select name="company" onchange="this.form.submit()">
+        <option value="all">🏢 Toutes les entreprises</option>
+        <option value="none" <%= filters.company === 'none' ? 'selected' : '' %>>— Sans entreprise —</option>
+        <% companies.forEach(c => { %>
+          <option value="<%= c.id %>" <%= filters.company == c.id ? 'selected' : '' %>><%= c.name %></option>
+        <% }) %>
+      </select>
+    <% } %>
     <div class="search-filter">
       <input type="text" name="search" value="<%= filters.search || '' %>" placeholder="<%= t.tickets_filter_search %>">
       <button type="submit" class="btn btn-sm btn-ghost">🔍</button>
@@ -68,6 +77,7 @@
         <th><%= t.tickets_col_ref %></th>
         <th><%= t.tickets_col_subject %></th>
         <th><%= t.tickets_col_client %></th>
+        <th>🏢</th>
         <th><%= t.tickets_col_priority %></th>
         <th><%= t.tickets_col_status %></th>
         <th><%= t.tickets_col_assigned %></th>
@@ -86,6 +96,7 @@
             <div class="ticket-category"><%= ticket.category %></div>
           </td>
           <td><%= ticket.client_name || '—' %></td>
+          <td><% if (ticket.company_name) { %><span class="company-tag" style="background:color-mix(in srgb, <%= ticket.company_color || '#6366f1' %> 10%, transparent);color:<%= ticket.company_color || '#6366f1' %>;border-color:color-mix(in srgb, <%= ticket.company_color || '#6366f1' %> 20%, transparent)"><span class="company-badge-dot" style="background:<%= ticket.company_color || '#6366f1' %>"></span> <%= ticket.company_name %></span><% } else { %><span class="text-muted">—</span><% } %></td>
           <td><span class="badge badge-priority-<%= ticket.priority %>"><%= ticket.priority %></span></td>
           <td><span class="badge badge-status-<%= ticket.status %>"><%= ticket.status.replace('_', ' ') %></span></td>
           <td>
@@ -102,10 +113,26 @@
         </tr>
       <% }) %>
       <% if (tickets.length === 0) { %>
-        <tr><td colspan="7" class="empty-table"><%= t.tickets_empty %></td></tr>
+        <tr><td colspan="8" class="empty-table"><%= t.tickets_empty %></td></tr>
       <% } %>
     </tbody>
   </table>
 </div>
 
 <%- include('../partials/foot') %>
+
+<script>
+// Real-time: auto-refresh when new livechat ticket arrives
+if (typeof io !== 'undefined') {
+  const sock = io();
+  sock.on('livechat:new', () => { window.location.reload(); });
+  sock.on('ticket:newMessage', () => {
+    // Update badge or subtle indicator — simple reload for now
+    const badge = document.querySelector('.stat-progress .stat-value');
+    if (badge && !badge.dataset.notified) {
+      badge.dataset.notified = '1';
+      badge.style.animation = 'pulse 0.5s ease 2';
+    }
+  });
+}
+</script>

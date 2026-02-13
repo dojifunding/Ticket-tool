@@ -1,0 +1,91 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <a href="/admin" class="back-link">← Administration</a>
+    <h1 class="page-title">🏢 Entreprises</h1>
+    <p class="page-subtitle"><%= companies.length %> workspace(s)</p>
+  </div>
+</div>
+
+<% if (typeof query !== 'undefined' && query.error === 'duplicate') { %>
+  <div class="alert alert-error">Une entreprise avec ce nom existe déjà.</div>
+<% } %>
+
+<div class="companies-page-grid">
+  <!-- Existing Companies -->
+  <% companies.forEach(c => { %>
+    <div class="company-card-ws <%= c.is_active ? '' : 'company-inactive' %>">
+      <div class="company-card-top">
+        <div class="company-card-icon" style="background: <%= c.brand_color || '#6366f1' %>15; color: <%= c.brand_color || '#6366f1' %>">
+          <% if (c.logo_url) { %>
+            <img src="<%= c.logo_url %>" alt="<%= c.name %>" style="width:40px;height:40px;border-radius:8px;object-fit:contain">
+          <% } else { %>
+            <span style="font-size:1.5rem;font-weight:700"><%= c.name.charAt(0).toUpperCase() %></span>
+          <% } %>
+        </div>
+        <div>
+          <h3 class="company-card-name"><%= c.name %></h3>
+          <% if (c.website) { %><p class="company-card-url"><%= c.website %></p><% } %>
+        </div>
+        <% if (!c.is_active) { %><span class="badge" style="background:var(--danger);color:#fff;margin-left:auto;font-size:.7rem">Inactif</span><% } %>
+      </div>
+
+      <div class="company-card-stats">
+        <div class="company-mini-stat"><span><%= c.ticket_count %></span> Tickets</div>
+        <div class="company-mini-stat"><span><%= c.article_count %></span> Articles</div>
+        <div class="company-mini-stat"><span><%= c.user_count %></span> Membres</div>
+      </div>
+
+      <div class="company-card-actions">
+        <a href="/admin/companies/<%= c.id %>/workspace" class="btn btn-sm btn-primary">⚙️ Workspace</a>
+        <a href="/admin/companies/<%= c.id %>/articles" class="btn btn-sm btn-ghost">📝 Articles</a>
+        <a href="/help/c/<%= c.slug %>" class="btn btn-sm btn-ghost" target="_blank">🌐</a>
+        <form method="POST" action="/admin/companies/<%= c.id %>/toggle" style="margin:0;margin-left:auto">
+          <button type="submit" class="btn btn-sm btn-ghost" title="<%= c.is_active ? 'Désactiver' : 'Activer' %>" style="font-size:.8rem"><%= c.is_active ? '🔴' : '🟢' %></button>
+        </form>
+      </div>
+    </div>
+  <% }) %>
+
+  <!-- New Company Card -->
+  <div class="company-card-ws company-card-new">
+    <h3 style="margin:0 0 1rem">➕ Nouvelle entreprise</h3>
+    <form method="POST" action="/admin/companies/create">
+      <div class="form-group">
+        <label>Nom *</label>
+        <input type="text" name="name" required placeholder="Ex: Acme Corp">
+      </div>
+      <div class="form-group">
+        <label>Email de contact</label>
+        <input type="email" name="contact_email" placeholder="contact@acme.com">
+      </div>
+      <div class="form-group">
+        <label>Site web</label>
+        <input type="url" name="website" placeholder="https://acme.com">
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea name="description" rows="2" placeholder="Description courte..."></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">🏢 Créer & configurer</button>
+    </form>
+  </div>
+</div>
+
+<style>
+  .companies-page-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.25rem; }
+  .company-card-ws { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; display: flex; flex-direction: column; gap: .75rem; }
+  .company-card-ws.company-inactive { opacity: .5; }
+  .company-card-new { border-style: dashed; }
+  .company-card-top { display: flex; align-items: center; gap: .75rem; }
+  .company-card-icon { width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .company-card-name { margin: 0; font-size: 1.05rem; font-weight: 700; }
+  .company-card-url { margin: .15rem 0 0; font-size: .75rem; color: var(--text-muted); }
+  .company-card-stats { display: flex; gap: .75rem; }
+  .company-mini-stat { font-size: .78rem; color: var(--text-muted); }
+  .company-mini-stat span { font-weight: 700; color: var(--text); }
+  .company-card-actions { display: flex; gap: .35rem; flex-wrap: wrap; }
+</style>
+
+<%- include('../partials/foot') %>

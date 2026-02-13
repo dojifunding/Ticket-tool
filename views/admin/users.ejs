@@ -27,6 +27,14 @@
         <%= u.role === 'admin' ? t.role_admin : u.role === 'developer' ? t.role_developer : t.role_support %>
       </span>
 
+      <% if (u.companies && u.companies.length > 0) { %>
+        <div class="user-companies-list">
+          <% u.companies.forEach(c => { %>
+            <span class="company-badge">🏢 <%= c.name %></span>
+          <% }) %>
+        </div>
+      <% } %>
+
       <div class="user-card-stats">
         <div class="user-stat">
           <div class="user-stat-value"><%= u.active_tasks || 0 %></div>
@@ -46,6 +54,7 @@
 
       <div class="user-card-actions">
         <span class="text-sm text-muted" style="flex:1">@<%= u.username %></span>
+        <a href="/admin/users/<%= u.id %>/edit" class="btn btn-sm btn-ghost">✏️</a>
         <% if (u.id !== user.id) { %>
           <form method="POST" action="/admin/users/<%= u.id %>/toggle" style="margin:0">
             <button type="submit" class="btn btn-sm <%= u.is_active ? 'btn-warning' : 'btn-primary' %>">
@@ -75,8 +84,8 @@
         <div class="form-group">
           <label><%= t.users_role %></label>
           <select name="role" required>
-            <option value="developer"><%= t.users_role_developer %></option>
             <option value="support"><%= t.users_role_support %></option>
+            <option value="developer"><%= t.users_role_developer %></option>
             <option value="admin"><%= t.users_role_admin %></option>
           </select>
         </div>
@@ -89,9 +98,29 @@
         <label><%= t.users_password %></label>
         <input type="password" name="password" required minlength="4" placeholder="••••••••">
       </div>
+      <% if (companies.length > 0) { %>
+        <div class="form-group">
+          <label>🏢 Entreprise(s)</label>
+          <div class="checkbox-grid compact">
+            <% companies.forEach(c => { %>
+              <label class="checkbox-item">
+                <input type="checkbox" name="company_ids" value="<%= c.id %>">
+                <span><%= c.name %></span>
+              </label>
+            <% }) %>
+          </div>
+        </div>
+      <% } %>
       <button type="submit" class="btn btn-primary btn-full"><%= t.users_create %></button>
     </form>
   </div>
 </div>
+
+<style>
+  .user-companies-list { display: flex; flex-wrap: wrap; gap: .35rem; margin: .5rem 0; }
+  .company-badge { font-size: .75rem; padding: .15rem .5rem; border-radius: 20px; background: rgba(99,102,241,.1); color: var(--primary); border: 1px solid rgba(99,102,241,.2); }
+  .checkbox-grid.compact { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .35rem; }
+  .checkbox-grid.compact .checkbox-item { font-size: .85rem; padding: .3rem .5rem; }
+</style>
 
 <%- include('../partials/foot') %>

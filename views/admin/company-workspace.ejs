@@ -1,0 +1,305 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <a href="/admin/companies" class="back-link">← Entreprises</a>
+    <h1 class="page-title">🏢 <%= company.name %></h1>
+    <p class="page-subtitle">Workspace — Gérez le help center, le branding, l'IA et l'équipe</p>
+  </div>
+  <div class="page-actions">
+    <a href="/help/c/<%= company.slug %>" class="btn btn-ghost btn-sm" target="_blank">🌐 Voir le Help Center</a>
+    <a href="/admin/companies/<%= company.id %>/articles" class="btn btn-primary btn-sm">📝 Gérer les articles</a>
+  </div>
+</div>
+
+<% if (saved) { %>
+  <div class="alert alert-success" style="margin-bottom:1rem">✅ Paramètres sauvegardés.</div>
+<% } %>
+
+<!-- Tabs -->
+<div class="ws-tabs">
+  <button class="ws-tab <%= tab === 'general' ? 'active' : '' %>" onclick="switchTab('general')">⚙️ Général</button>
+  <button class="ws-tab <%= tab === 'branding' ? 'active' : '' %>" onclick="switchTab('branding')">🎨 Branding</button>
+  <button class="ws-tab <%= tab === 'ai' ? 'active' : '' %>" onclick="switchTab('ai')">🤖 IA & Chatbot</button>
+  <button class="ws-tab <%= tab === 'helpcenter' ? 'active' : '' %>" onclick="switchTab('helpcenter')">📚 Help Center</button>
+  <button class="ws-tab <%= tab === 'team' ? 'active' : '' %>" onclick="switchTab('team')">👥 Équipe</button>
+</div>
+
+<form method="POST" action="/admin/companies/<%= company.id %>/workspace">
+  <input type="hidden" name="tab" id="currentTab" value="<%= tab %>">
+
+  <!-- ═══ TAB: General ═══ -->
+  <div class="ws-panel" id="tab-general" style="display:<%= tab === 'general' ? 'block' : 'none' %>">
+    <div class="card">
+      <div class="card-header"><h2>⚙️ Informations générales</h2></div>
+      <div class="card-body">
+        <div class="form-group">
+          <label><strong>Nom de l'entreprise</strong></label>
+          <input type="text" name="name" value="<%= company.name %>" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Email de contact</label>
+            <input type="email" name="contact_email" value="<%= company.contact_email || '' %>" placeholder="contact@acme.com">
+          </div>
+          <div class="form-group">
+            <label>Site web</label>
+            <input type="url" name="website" value="<%= company.website || '' %>" placeholder="https://acme.com">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea name="description" rows="3" placeholder="Description de l'entreprise..."><%= company.description || '' %></textarea>
+        </div>
+
+        <div class="ws-stats-row">
+          <div class="ws-stat"><span class="ws-stat-val"><%= ticketCount %></span><span class="ws-stat-label">Tickets</span></div>
+          <div class="ws-stat"><span class="ws-stat-val"><%= articleCount %></span><span class="ws-stat-label">Articles FAQ</span></div>
+          <div class="ws-stat"><span class="ws-stat-val"><%= kbCount %></span><span class="ws-stat-label">Entrées KB</span></div>
+          <div class="ws-stat"><span class="ws-stat-val"><%= assignedUsers.length %></span><span class="ws-stat-label">Membres</span></div>
+        </div>
+
+        <div class="form-row" style="margin-top:1rem">
+          <label class="toggle-item">
+            <input type="checkbox" name="help_center_enabled" value="1" <%= company.help_center_enabled ? 'checked' : '' %>>
+            <span>📚 Help Center activé</span>
+          </label>
+          <label class="toggle-item">
+            <input type="checkbox" name="livechat_enabled" value="1" <%= company.livechat_enabled ? 'checked' : '' %>>
+            <span>💬 Livechat activé</span>
+          </label>
+        </div>
+
+        <div class="ws-info-box">
+          <strong>🔗 URL du Help Center :</strong>
+          <code>/help/c/<%= company.slug %></code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: Branding ═══ -->
+  <div class="ws-panel" id="tab-branding" style="display:<%= tab === 'branding' ? 'block' : 'none' %>">
+    <div class="card">
+      <div class="card-header"><h2>🎨 Apparence & Marque</h2></div>
+      <div class="card-body">
+        <!-- Logo -->
+        <div class="form-group">
+          <label><strong>Logo</strong></label>
+          <div style="display:flex;align-items:center;gap:1rem">
+            <div id="logoPreview" style="width:64px;height:64px;border-radius:12px;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer" onclick="document.getElementById('logoFile').click()">
+              <% if (company.logo_url) { %>
+                <img src="<%= company.logo_url %>" style="width:100%;height:100%;object-fit:contain" id="logoImg">
+              <% } else { %>
+                <span style="font-size:1.5rem;color:var(--text-muted)" id="logoPlaceholder">📷</span>
+                <img src="" style="width:100%;height:100%;object-fit:contain;display:none" id="logoImg">
+              <% } %>
+            </div>
+            <div>
+              <input type="file" id="logoFile" accept="image/*" style="display:none" onchange="uploadCompanyLogo(this)">
+              <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('logoFile').click()">Changer le logo</button>
+              <p style="font-size:.7rem;color:var(--text-muted);margin:.25rem 0 0">PNG / JPG, max 512 Ko</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Colors -->
+        <div class="form-row" style="margin-top:1rem">
+          <div class="form-group">
+            <label><strong>Couleur principale</strong></label>
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <input type="color" name="brand_color" value="<%= company.brand_color || '#6366f1' %>" style="width:50px;height:36px;border:none;border-radius:8px;cursor:pointer;padding:0">
+              <input type="text" value="<%= company.brand_color || '#6366f1' %>" style="width:100px;font-family:monospace;font-size:.8rem" onchange="this.previousElementSibling.value=this.value" readonly>
+            </div>
+          </div>
+          <div class="form-group">
+            <label><strong>Couleur dark mode</strong></label>
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <input type="color" name="brand_color_dark" value="<%= company.brand_color_dark || '#818cf8' %>" style="width:50px;height:36px;border:none;border-radius:8px;cursor:pointer;padding:0">
+              <input type="text" value="<%= company.brand_color_dark || '#818cf8' %>" style="width:100px;font-family:monospace;font-size:.8rem" readonly>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preview -->
+        <div class="ws-brand-preview" style="margin-top:1rem;padding:1rem;border:1px solid var(--border);border-radius:12px;background:var(--bg-secondary)">
+          <p style="margin:0 0 .5rem;font-size:.8rem;color:var(--text-muted)">Aperçu :</p>
+          <div style="display:flex;align-items:center;gap:.5rem">
+            <div style="width:32px;height:32px;border-radius:8px;background:<%= company.brand_color || '#6366f1' %>;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:.9rem"><%= company.name.charAt(0) %></div>
+            <span style="font-weight:700"><%= company.name %></span>
+            <span style="margin-left:auto;padding:.3rem .8rem;border-radius:6px;background:<%= company.brand_color || '#6366f1' %>;color:#fff;font-size:.8rem">Bouton</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: AI & Chatbot ═══ -->
+  <div class="ws-panel" id="tab-ai" style="display:<%= tab === 'ai' ? 'block' : 'none' %>">
+    <div class="card">
+      <div class="card-header"><h2>🤖 IA & Chatbot</h2></div>
+      <div class="card-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label><strong>Nom du chatbot</strong></label>
+            <input type="text" name="chatbot_name" value="<%= company.chatbot_name || 'Assistant' %>" placeholder="Assistant">
+          </div>
+          <div class="form-group">
+            <label><strong>Profil IA</strong></label>
+            <select name="ai_profile">
+              <option value="generic" <%= company.ai_profile === 'generic' ? 'selected' : '' %>>🌐 Générique</option>
+              <% if (typeof aiProfiles !== 'undefined') { Object.keys(aiProfiles).filter(k => k !== 'generic').forEach(k => { const p = aiProfiles[k]; %>
+                <option value="<%= k %>" <%= company.ai_profile === k ? 'selected' : '' %>><%= p.icon || '' %> <%= p.name_fr || k %></option>
+              <% }); } %>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label><strong>Contexte personnalisé du chatbot</strong></label>
+          <textarea name="chatbot_context" rows="5" placeholder="Instructions spécifiques pour l'IA de cette entreprise. Ex: ton, domaine, terminologie..."><%= company.chatbot_context || '' %></textarea>
+          <p class="text-muted" style="font-size:.8rem;margin:.25rem 0 0">Ce contexte sera ajouté aux instructions de l'IA pour cette entreprise.</p>
+        </div>
+
+        <div class="form-group">
+          <label><strong>🏢 Secteur d'activité & vocabulaire métier</strong></label>
+          <textarea name="industry_context" rows="4" placeholder="Décrivez le secteur d'activité et le vocabulaire spécifique. Ex: Finance / Trading / Prop Firm. Termes à utiliser : drawdown, payout, funded account, equity, trailing stop..."><%= company.industry_context || '' %></textarea>
+          <p class="text-muted" style="font-size:.8rem;margin:.25rem 0 0">Utilisé pour les traductions et la génération de contenu — permet de respecter le lexique métier (finance, trading, e-commerce, santé, etc.)</p>
+        </div>
+
+        <div class="form-row" style="margin-top:1rem">
+          <label class="toggle-item">
+            <input type="checkbox" name="ai_livechat_faq_first" value="1" <%= company.ai_livechat_faq_first ? 'checked' : '' %>>
+            <span>📚 Chercher dans la FAQ avant de répondre</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: Help Center ═══ -->
+  <div class="ws-panel" id="tab-helpcenter" style="display:<%= tab === 'helpcenter' ? 'block' : 'none' %>">
+    <div class="card">
+      <div class="card-header">
+        <h2>📚 Help Center & Traductions</h2>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label><strong>Langues de traduction</strong> (séparées par des virgules)</label>
+          <input type="text" name="translation_languages" value="<%= company.translation_languages || 'en' %>" placeholder="en,es,de">
+          <p class="text-muted" style="font-size:.8rem;margin:.25rem 0 0">Codes supportés : en, es, de, fr (défaut).</p>
+        </div>
+        <label class="toggle-item" style="margin:.75rem 0">
+          <input type="checkbox" name="auto_translate_articles" value="1" <%= company.auto_translate_articles ? 'checked' : '' %>>
+          <span>🌍 Traduction automatique des articles à la publication</span>
+        </label>
+
+        <!-- FAQ Categories for this company -->
+        <h3 style="margin:1.5rem 0 .75rem;font-size:1rem;font-weight:600">📁 Catégories FAQ</h3>
+        <% if (categories.length > 0) { %>
+          <div class="cat-list">
+            <% categories.forEach(c => { %>
+              <div class="cat-item">
+                <span class="cat-icon"><%= c.icon %></span>
+                <span><%= c.name %></span>
+                <% if (c.name_en) { %><span class="text-muted text-sm">(EN: <%= c.name_en %>)</span><% } %>
+              </div>
+            <% }) %>
+          </div>
+        <% } else { %>
+          <p class="text-muted">Aucune catégorie. Elles seront créées automatiquement.</p>
+        <% } %>
+
+        <div class="ws-info-box" style="margin-top:1rem">
+          <strong>📝 Gérer les articles :</strong> <a href="/admin/companies/<%= company.id %>/articles">Ouvrir l'éditeur d'articles →</a>
+          <br>
+          <strong>🧠 Base de connaissances :</strong> <a href="/admin/knowledge?company=<%= company.id %>">Gérer la KB →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: Team ═══ -->
+  <div class="ws-panel" id="tab-team" style="display:<%= tab === 'team' ? 'block' : 'none' %>">
+    <div class="card">
+      <div class="card-header"><h2>👥 Équipe assignée</h2></div>
+      <div class="card-body">
+        <p class="text-muted" style="margin-bottom:.75rem;font-size:.85rem">Sélectionnez les utilisateurs qui gèrent cette entreprise. Ils verront les tickets et pourront répondre au livechat.</p>
+        <div class="team-grid">
+          <% allUsers.forEach(u => { %>
+            <label class="team-member-item">
+              <input type="checkbox" name="user_ids" value="<%= u.id %>"
+                <%= assignedUsers.find(a => a.id === u.id) ? 'checked' : '' %>>
+              <div class="team-member-info">
+                <span class="team-member-name"><%= u.full_name %></span>
+                <span class="team-member-role"><%= u.role === 'admin' ? '👑 Admin' : u.role === 'developer' ? '💻 Dev' : '🎧 Support' %> — <%= u.email %></span>
+              </div>
+            </label>
+          <% }) %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ws-actions">
+    <button type="submit" class="btn btn-primary">💾 Enregistrer les modifications</button>
+    <a href="/admin/companies" class="btn btn-ghost">Retour</a>
+  </div>
+</form>
+
+<style>
+  .ws-tabs { display: flex; gap: .25rem; padding: .5rem; background: var(--bg-secondary); border-radius: 12px; margin-bottom: 1.5rem; overflow-x: auto; }
+  .ws-tab { padding: .5rem 1rem; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: .85rem; font-weight: 500; white-space: nowrap; color: var(--text-muted); transition: all .2s; }
+  .ws-tab.active { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .ws-tab:hover:not(.active) { color: var(--text); background: var(--bg); }
+  .ws-panel .card { margin-bottom: 1rem; }
+  .ws-stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; margin-top: 1rem; }
+  .ws-stat { text-align: center; padding: .75rem; background: var(--bg-secondary); border-radius: 10px; border: 1px solid var(--border); }
+  .ws-stat-val { display: block; font-size: 1.5rem; font-weight: 700; color: var(--primary); }
+  .ws-stat-label { font-size: .75rem; color: var(--text-muted); }
+  .ws-info-box { padding: .75rem 1rem; background: var(--primary-light, rgba(99,102,241,.06)); border: 1px solid rgba(99,102,241,.15); border-radius: 8px; font-size: .85rem; margin-top: .75rem; }
+  .ws-info-box code { background: rgba(0,0,0,.06); padding: .1rem .4rem; border-radius: 4px; font-size: .8rem; }
+  .ws-actions { display: flex; gap: .5rem; margin-top: 1.5rem; }
+  .toggle-item { display: flex; align-items: center; gap: .5rem; cursor: pointer; font-size: .85rem; }
+  .toggle-item input[type="checkbox"] { margin: 0; }
+  .cat-list { display: flex; flex-direction: column; gap: .3rem; }
+  .cat-item { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; background: var(--bg-secondary); border-radius: 8px; font-size: .85rem; }
+  .cat-icon { font-size: 1.1rem; }
+  .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .5rem; }
+  .team-member-item { display: flex; align-items: center; gap: .6rem; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all .15s; }
+  .team-member-item:hover { background: var(--bg-secondary); }
+  .team-member-item:has(input:checked) { border-color: var(--primary); background: rgba(99,102,241,.04); }
+  .team-member-item input[type="checkbox"] { margin: 0; flex-shrink: 0; }
+  .team-member-name { font-weight: 600; font-size: .9rem; display: block; }
+  .team-member-role { font-size: .75rem; color: var(--text-muted); display: block; }
+  @media(max-width:600px) { .ws-stats-row { grid-template-columns: repeat(2,1fr); } .ws-tabs { flex-wrap: nowrap; } }
+</style>
+
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.ws-panel').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.ws-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).style.display = 'block';
+  event.target.classList.add('active');
+  document.getElementById('currentTab').value = name;
+}
+
+function uploadCompanyLogo(input) {
+  if (!input.files || !input.files[0]) return;
+  const fd = new FormData();
+  fd.append('logo', input.files[0]);
+  fetch('/admin/companies/<%= company.id %>/logo', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        const img = document.getElementById('logoImg');
+        img.src = data.url;
+        img.style.display = '';
+        const ph = document.getElementById('logoPlaceholder');
+        if (ph) ph.style.display = 'none';
+      }
+    });
+}
+</script>
+
+<%- include('../partials/foot') %>

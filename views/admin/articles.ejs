@@ -2,16 +2,21 @@
 
 <div class="page-header">
   <div>
-    <h1 class="page-title"><%= t.articles_title %></h1>
+    <h1 class="page-title"><%= (typeof selectedCompany !== 'undefined' && selectedCompany) ? selectedCompany.name + ' — ' : '' %><%= t.articles_title %></h1>
     <p class="page-subtitle"><%= articles.length %> <%= t.articles_count %></p>
   </div>
   <div class="header-btns">
-    <a href="/help" target="_blank" class="btn btn-ghost">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-      <%= t.articles_view_public %>
-    </a>
+    <% if (typeof selectedCompany !== 'undefined' && selectedCompany) { %>
+      <a href="/help/c/<%= selectedCompany.slug %>" target="_blank" class="btn btn-ghost">🌐 Help Center</a>
+      <a href="/admin/companies/<%= selectedCompany.id %>/workspace" class="btn btn-ghost">⚙️ Workspace</a>
+    <% } else { %>
+      <a href="/help" target="_blank" class="btn btn-ghost">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        <%= t.articles_view_public %>
+      </a>
+    <% } %>
     <% if (aiConfigured) { %>
-      <a href="/admin/articles/suggestions" class="btn btn-ghost" style="position:relative">
+      <a href="/admin/articles/suggestions<%= (typeof companyId !== 'undefined' && companyId) ? '?company=' + companyId : '' %>" class="btn btn-ghost" style="position:relative">
         🤖 <%= t.ai_suggestions_link %>
         <% if (typeof pendingSuggestions !== 'undefined' && pendingSuggestions > 0) { %>
           <span class="notif-dot" style="position:absolute;top:4px;right:4px;width:8px;height:8px;background:var(--danger);border-radius:50%"></span>
@@ -22,12 +27,25 @@
         <%= t.articles_ai_generate %>
       </button>
     <% } %>
-    <a href="/admin/articles/new" class="btn btn-primary">
+    <a href="/admin/articles/categories<%= (typeof companyId !== 'undefined' && companyId) ? '?company=' + companyId : '' %>" class="btn btn-ghost">🏷️ Catégories</a>
+    <a href="/admin/articles/new<%= (typeof companyId !== 'undefined' && companyId) ? '?company=' + companyId : '' %>" class="btn btn-primary">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
       <%= t.articles_new %>
     </a>
   </div>
 </div>
+
+<% if (typeof companies !== 'undefined' && companies.length > 0) { %>
+<div class="filters-bar" style="margin-bottom:1rem">
+  <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+    <span style="font-size:.85rem;font-weight:600">🏢 Entreprise :</span>
+    <a href="/admin/articles" class="btn btn-xs <%= !companyId ? 'btn-primary' : 'btn-ghost' %>">Toutes</a>
+    <% companies.forEach(c => { %>
+      <a href="/admin/articles?company=<%= c.id %>" class="btn btn-xs <%= companyId == c.id ? 'btn-primary' : 'btn-ghost' %>"><%= c.name %></a>
+    <% }) %>
+  </div>
+</div>
+<% } %>
 
 <% if (!aiConfigured) { %>
   <div class="alert alert-info" style="margin-bottom:1.5rem">
@@ -36,10 +54,24 @@
   </div>
 <% } %>
 
+<!-- Bulk Action Bar -->
+<div id="bulkBar" style="display:none;margin-bottom:1rem;padding:.75rem 1rem;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);align-items:center;gap:1rem;flex-wrap:wrap">
+  <span id="bulkCount" style="font-weight:600;font-size:.85rem">0 sélectionné(s)</span>
+  <select id="bulkCategory" style="padding:.35rem .5rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.85rem">
+    <option value="">— Changer la catégorie —</option>
+    <% categories.forEach(cat => { %>
+      <option value="<%= cat.id %>"><%= cat.icon %> <%= cat.name %></option>
+    <% }) %>
+  </select>
+  <button class="btn btn-xs btn-primary" onclick="applyBulkCategory()">Appliquer</button>
+  <button class="btn btn-xs btn-ghost" onclick="clearSelection()" style="margin-left:auto">✕ Annuler</button>
+</div>
+
 <div class="table-container">
   <table class="data-table">
     <thead>
       <tr>
+        <th style="width:30px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
         <th><%= t.articles_col_title %></th>
         <th><%= t.articles_col_category %></th>
         <th><%= t.articles_col_visibility %></th>
@@ -52,6 +84,7 @@
     <tbody>
       <% articles.forEach(article => { %>
         <tr>
+          <td><input type="checkbox" class="article-check" value="<%= article.id %>" onchange="updateBulkBar()"></td>
           <td>
             <div class="article-title-cell">
               <strong><%= article.title %></strong>
@@ -69,6 +102,9 @@
             <% } else { %>
               <span class="text-muted">—</span>
             <% } %>
+            <% if (typeof article.company_name !== 'undefined' && article.company_name && !companyId) { %>
+              <div class="company-tag" style="margin-top:.2rem"><%= article.company_name %></div>
+            <% } %>
           </td>
           <td>
             <span class="badge <%= article.is_public ? 'badge-status-open' : 'badge-status-closed' %>">
@@ -84,7 +120,7 @@
           <td class="text-muted"><%= new Date(article.updated_at).toLocaleDateString(dateLocale) %></td>
           <td>
             <div class="action-btns">
-              <a href="/help/article/<%= article.slug %>" target="_blank" class="btn btn-xs btn-ghost" title="<%= t.articles_preview %>">👁️</a>
+              <a href="<%= article.company_slug ? '/help/c/' + article.company_slug + '/article/' + article.slug : '/help/article/' + article.slug %>" target="_blank" class="btn btn-xs btn-ghost" title="<%= t.articles_preview %>">👁️</a>
               <a href="/admin/articles/<%= article.id %>/edit" class="btn btn-xs btn-ghost" title="<%= t.articles_edit %>">✏️</a>
               <% if (aiConfigured) { %>
                 <button class="btn btn-xs btn-ghost" title="Traduire" onclick="translateArticle(<%= article.id %>)" id="transBtn<%= article.id %>">🌐</button>
@@ -103,7 +139,7 @@
         </tr>
       <% }) %>
       <% if (articles.length === 0) { %>
-        <tr><td colspan="7" class="empty-table"><%= t.articles_empty %></td></tr>
+        <tr><td colspan="8" class="empty-table"><%= t.articles_empty %></td></tr>
       <% } %>
     </tbody>
   </table>
@@ -170,6 +206,16 @@
             <% } %>
           </div>
         </div>
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;flex-wrap:wrap">
+          <label style="font-size:0.85rem;color:var(--text-secondary)">🌐 Langue des articles :</label>
+          <select id="kbOutputLang" style="padding:0.35rem 0.6rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg-secondary);color:var(--text);font-size:0.85rem">
+            <option value="source" selected>📄 Conserver la langue d'origine</option>
+            <option value="fr">🇫🇷 Traduire en Français</option>
+            <option value="en">🇬🇧 Traduire en Anglais</option>
+            <option value="es">🇪🇸 Traduire en Espagnol</option>
+            <option value="de">🇩🇪 Traduire en Allemand</option>
+          </select>
+        </div>
         <button class="btn btn-primary" onclick="aiGenerateFromKB()" id="aiGenBtn3">
           <span class="btn-text">🤖 <%= t.articles_ai_kb_generate %></span>
           <span class="btn-loading" style="display:none"><%= t.loading %></span>
@@ -215,6 +261,7 @@ const CATEGORIES = <%- JSON.stringify((categories || []).map(c => ({ id: c.id, n
 <% } %>
 
 <script>
+const currentCompanyId = '<%= typeof companyId !== "undefined" && companyId ? companyId : "" %>';
 function openAIModal() { document.getElementById('aiModal').classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 
@@ -235,6 +282,8 @@ function pollJob(jobId, interval = 2000, maxTime = 300000) {
   const progressFill = document.getElementById('aiProgressFill');
   const progressText = document.getElementById('aiProgressText');
   let pollCount = 0;
+  let notFoundRetries = 0;
+  const maxNotFoundRetries = 5; // retry up to 5 times on not_found
 
   const messages = [
     'Analyse du contenu de la base de connaissances...',
@@ -265,7 +314,7 @@ function pollJob(jobId, interval = 2000, maxTime = 300000) {
         if (progressText) progressText.textContent = messages[Math.min(pollCount - 1, messages.length - 1)];
         if (progressFill) progressFill.style.width = Math.min(5 + pollCount * 4, 90) + '%';
 
-        const res = await fetch('/admin/articles/ai/job/' + jobId);
+        const res = await fetch('/admin/articles/ai/job/' + jobId + '?t=' + Date.now());
         const job = await res.json();
         if (job.status === 'done') {
           if (progressFill) progressFill.style.width = '100%';
@@ -274,7 +323,16 @@ function pollJob(jobId, interval = 2000, maxTime = 300000) {
           return resolve(job.result);
         }
         if (job.status === 'error') { if (progress) progress.style.display = 'none'; return reject(new Error(job.error || 'Erreur IA')); }
-        if (job.status === 'not_found') { if (progress) progress.style.display = 'none'; return reject(new Error('Job introuvable')); }
+        if (job.status === 'not_found') {
+          notFoundRetries++;
+          if (notFoundRetries >= maxNotFoundRetries) {
+            if (progress) progress.style.display = 'none';
+            return reject(new Error('Job introuvable après ' + maxNotFoundRetries + ' tentatives. Vérifiez la console serveur.'));
+          }
+          // Retry — job may not be registered yet
+          setTimeout(check, interval);
+          return;
+        }
         if (Date.now() - start > maxTime) { if (progress) progress.style.display = 'none'; return reject(new Error('Timeout')); }
         setTimeout(check, interval);
       } catch (e) { if (progress) progress.style.display = 'none'; reject(e); }
@@ -359,7 +417,7 @@ async function bulkPublish() {
   try {
     const res = await fetch('/admin/articles/ai/bulk-publish', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ articles })
+      body: JSON.stringify({ articles, company_id: currentCompanyId })
     });
     const data = await res.json();
     if (data.ok) {
@@ -388,7 +446,7 @@ async function aiGenerateFromTitle() {
   try {
     const res = await fetch('/admin/articles/ai/generate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, resources: document.getElementById('aiResources').value.trim() })
+      body: JSON.stringify({ title, resources: document.getElementById('aiResources').value.trim(), company_id: currentCompanyId })
     });
     const data = await res.json();
     if (!data.ok || !data.jobId) throw new Error(data.error || 'Erreur');
@@ -401,12 +459,13 @@ async function aiGenerateFromTitle() {
 async function aiGenerateFromContent() {
   const content = document.getElementById('aiContent').value.trim();
   if (!content) return;
+  const outputLang = document.getElementById('kbOutputLang')?.value || 'source';
   const btn = document.getElementById('aiGenBtn2');
   setBtn(btn, true);
   try {
     const res = await fetch('/admin/articles/ai/generate-from-content', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content })
+      body: JSON.stringify({ content, company_id: currentCompanyId, output_lang: outputLang })
     });
     const data = await res.json();
     if (!data.ok || !data.jobId) throw new Error(data.error || 'Erreur');
@@ -420,12 +479,13 @@ async function aiGenerateFromKB() {
   const checks = document.querySelectorAll('input[name="kbIds"]:checked');
   if (!checks.length) return alert('Sélectionnez au moins une entrée de la base de connaissances.');
   const kbIds = Array.from(checks).map(cb => parseInt(cb.value));
+  const outputLang = document.getElementById('kbOutputLang')?.value || 'source';
   const btn = document.getElementById('aiGenBtn3');
   setBtn(btn, true);
   try {
     const res = await fetch('/admin/articles/ai/generate-from-kb', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kbIds })
+      body: JSON.stringify({ kbIds, company_id: currentCompanyId, output_lang: outputLang })
     });
     const data = await res.json();
     if (!data.ok || !data.jobId) throw new Error(data.error || 'Erreur');
@@ -501,7 +561,7 @@ async function translateArticle(id) {
     if (data.jobId) {
       // Poll for completion
       const poll = async () => {
-        const r = await fetch('/admin/articles/ai/job/' + data.jobId);
+        const r = await fetch('/admin/articles/ai/job/' + data.jobId + '?t=' + Date.now());
         const job = await r.json();
         if (job.status === 'done') { btn.textContent = '✅'; setTimeout(() => location.reload(), 800); return; }
         if (job.status === 'error') { btn.textContent = '❌'; alert('Erreur: ' + job.error); return; }
@@ -513,6 +573,43 @@ async function translateArticle(id) {
       alert(data.message || 'Traduit !');
     }
   } catch (e) { btn.textContent = '❌'; alert('Erreur: ' + e.message); }
+}
+// ═══ Bulk Category Actions ═══
+function toggleSelectAll(el) {
+  document.querySelectorAll('.article-check').forEach(cb => cb.checked = el.checked);
+  updateBulkBar();
+}
+function updateBulkBar() {
+  const checked = document.querySelectorAll('.article-check:checked');
+  const bar = document.getElementById('bulkBar');
+  if (checked.length > 0) {
+    bar.style.display = 'flex';
+    document.getElementById('bulkCount').textContent = checked.length + ' sélectionné(s)';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+function clearSelection() {
+  document.querySelectorAll('.article-check').forEach(cb => cb.checked = false);
+  document.getElementById('selectAll').checked = false;
+  updateBulkBar();
+}
+async function applyBulkCategory() {
+  const catId = document.getElementById('bulkCategory').value;
+  if (!catId) return alert('Sélectionnez une catégorie');
+  const ids = [...document.querySelectorAll('.article-check:checked')].map(cb => cb.value);
+  if (ids.length === 0) return;
+  if (!confirm('Changer la catégorie de ' + ids.length + ' article(s) ?')) return;
+  try {
+    const res = await fetch('/admin/articles/bulk-category', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ article_ids: ids, category_id: catId })
+    });
+    const data = await res.json();
+    if (data.ok) location.reload();
+    else alert('Erreur: ' + (data.error || 'Inconnu'));
+  } catch (e) { alert('Erreur: ' + e.message); }
 }
 </script>
 

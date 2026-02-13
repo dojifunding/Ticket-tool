@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { getDb, generateTicketRef, logActivity, createNotification } = require('../database');
+const { getDb, generateTicketRef, logActivity, createNotification, getSetting } = require('../database');
 const { isAuthenticated, isSupport } = require('../middleware/auth');
 
 router.use(isAuthenticated, isSupport);
@@ -11,10 +11,11 @@ router.get('/', (req, res) => {
 
   let sql = `
     SELECT t.*, u.full_name as assignee_name, u.avatar_color as assignee_color,
-      c.full_name as creator_name
+      c.full_name as creator_name, co.name as company_name, co.brand_color as company_color
     FROM tickets t
     LEFT JOIN users u ON t.assigned_to = u.id
     LEFT JOIN users c ON t.created_by = c.id
+    LEFT JOIN companies co ON t.company_id = co.id
     WHERE 1=1
   `;
   const params = [];
@@ -29,12 +30,17 @@ router.get('/', (req, res) => {
   if (priority && priority !== 'all') { sql += ' AND t.priority = ?'; params.push(priority); }
   if (assigned === 'me') { sql += ' AND t.assigned_to = ?'; params.push(req.session.user.id); }
   if (assigned === 'unassigned') { sql += ' AND t.assigned_to IS NULL'; }
-  if (search) { sql += ' AND (t.subject LIKE ? OR t.reference LIKE ? OR t.client_name LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
+  if (search) { sql += ' AND (t.subject LIKE ? OR t.reference LIKE ? OR t.client_name LIKE ? OR co.name LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`); }
+
+  // Company filter
+  if (req.query.company === 'none') { sql += ' AND t.company_id IS NULL'; }
+  else if (req.query.company && req.query.company !== 'all') { sql += ' AND t.company_id = ?'; params.push(parseInt(req.query.company)); }
 
   sql += ' ORDER BY CASE t.priority WHEN "urgent" THEN 1 WHEN "high" THEN 2 WHEN "medium" THEN 3 ELSE 4 END, t.updated_at DESC';
 
   const tickets = db.prepare(sql).all(...params);
   const agents = db.prepare('SELECT id, full_name, avatar_color FROM users WHERE role IN (?, ?) AND is_active = 1').all('support', 'admin');
+  const companies = db.prepare('SELECT id, name FROM companies WHERE is_active = 1 ORDER BY name').all();
 
   // Stats count all tickets (including archived)
   const stats = {
@@ -45,27 +51,28 @@ router.get('/', (req, res) => {
     archived: db.prepare('SELECT COUNT(*) as c FROM tickets WHERE status IN (?, ?)').get('resolved', 'closed').c,
   };
 
-  res.render('tickets/index', { tickets, agents, stats, filters: req.query, title: 'Tickets' });
+  res.render('tickets/index', { tickets, agents, companies, stats, filters: req.query, title: 'Tickets' });
 });
 
 // ─── New Ticket Form ─────────────────────────────────
 router.get('/new', (req, res) => {
   const db = getDb();
   const agents = db.prepare('SELECT id, full_name FROM users WHERE role IN (?, ?) AND is_active = 1').all('support', 'admin');
-  res.render('tickets/form', { ticket: null, agents, title: 'Nouveau Ticket' });
+  const companies = db.prepare('SELECT id, name FROM companies WHERE is_active = 1 ORDER BY name').all();
+  res.render('tickets/form', { ticket: null, agents, companies, title: 'Nouveau Ticket' });
 });
 
 // ─── Create Ticket ───────────────────────────────────
 router.post('/new', (req, res) => {
   const db = getDb();
-  const { subject, description, priority, category, client_name, client_email, assigned_to } = req.body;
+  const { subject, description, priority, category, client_name, client_email, assigned_to, company_id } = req.body;
   const user = req.session.user;
   const reference = generateTicketRef();
 
   const result = db.prepare(`
-    INSERT INTO tickets (reference, subject, description, priority, category, client_name, client_email, assigned_to, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(reference, subject, description, priority, category, client_name, client_email, assigned_to || null, user.id);
+    INSERT INTO tickets (reference, subject, description, priority, category, client_name, client_email, assigned_to, company_id, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(reference, subject, description, priority, category, client_name, client_email, assigned_to || null, company_id || null, user.id);
 
   const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(result.lastInsertRowid);
 
@@ -98,19 +105,23 @@ router.get('/:id', (req, res) => {
   const db = getDb();
   const ticket = db.prepare(`
     SELECT t.*, u.full_name as assignee_name, u.avatar_color as assignee_color,
-      c.full_name as creator_name
+      c.full_name as creator_name, co.name as company_name, co.brand_color as company_color, co.slug as company_slug, co.logo_url as company_logo
     FROM tickets t
     LEFT JOIN users u ON t.assigned_to = u.id
     LEFT JOIN users c ON t.created_by = c.id
+    LEFT JOIN companies co ON t.company_id = co.id
     WHERE t.id = ?
   `).get(req.params.id);
 
   if (!ticket) return res.status(404).render('error', { user: req.session.user, title: 'Ticket introuvable', message: '', code: 404 });
 
   const messages = db.prepare(`
-    SELECT tm.*, u.full_name, u.avatar_color, u.role as user_role
+    SELECT tm.*, 
+      COALESCE(u.full_name, '💬 Visiteur') as full_name, 
+      COALESCE(u.avatar_color, '#10b981') as avatar_color, 
+      COALESCE(u.role, 'visitor') as user_role
     FROM ticket_messages tm
-    JOIN users u ON tm.user_id = u.id
+    LEFT JOIN users u ON tm.user_id = u.id
     WHERE tm.ticket_id = ?
     ORDER BY tm.created_at ASC
   `).all(req.params.id);
@@ -133,13 +144,18 @@ router.get('/:id', (req, res) => {
   // Check if ticket has a livechat session
   const chatSession = db.prepare('SELECT * FROM chat_sessions WHERE ticket_id = ?').get(ticket.id);
 
-  res.render('tickets/detail', { ticket, messages, agents, escalatedTask, projects, chatSession: chatSession || null, title: `${ticket.reference} — ${ticket.subject}` });
+  // Escalation settings
+  const escalationEnabled = getSetting('escalation_enabled', '0') === '1';
+  const escalationCategories = getSetting('escalation_categories', 'bug,feature_request').split(',').filter(c => c.trim());
+  const companies = db.prepare('SELECT id, name FROM companies WHERE is_active = 1 ORDER BY name').all();
+
+  res.render('tickets/detail', { ticket, messages, agents, escalatedTask, projects, chatSession: chatSession || null, lang: req.session?.lang || 'fr', escalationEnabled, escalationCategories, companies, title: `${ticket.reference} — ${ticket.subject}` });
 });
 
 // ─── Update Ticket ───────────────────────────────────
 router.post('/:id/update', (req, res) => {
   const db = getDb();
-  const { status, priority, assigned_to, category } = req.body;
+  const { status, priority, assigned_to, category, company_id } = req.body;
   const user = req.session.user;
   const oldTicket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
 
@@ -153,9 +169,9 @@ router.post('/:id/update', (req, res) => {
   }
 
   db.prepare(`
-    UPDATE tickets SET status=?, priority=?, assigned_to=?, category=?, resolved_at=?, updated_at=CURRENT_TIMESTAMP
+    UPDATE tickets SET status=?, priority=?, assigned_to=?, category=?, company_id=?, resolved_at=?, updated_at=CURRENT_TIMESTAMP
     WHERE id=?
-  `).run(status, priority, assigned_to || null, category, resolvedAt, req.params.id);
+  `).run(status, priority, assigned_to || null, category, company_id || null, resolvedAt, req.params.id);
 
   const ticket = db.prepare('SELECT t.*, u.full_name as assignee_name FROM tickets t LEFT JOIN users u ON t.assigned_to = u.id WHERE t.id = ?').get(req.params.id);
   const io = req.app.get('io');

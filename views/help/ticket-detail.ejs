@@ -1,0 +1,162 @@
+<% const base = typeof helpBase !== "undefined" ? helpBase : "/help"; %>
+<% const companyName = (typeof company !== "undefined" && company) ? company.name : (typeof tenant !== "undefined" && tenant) ? tenant.name : "ProjectHub"; %>
+<% const companyColor = (typeof brandColor !== "undefined") ? brandColor : "#6366f1"; %>
+<!DOCTYPE html>
+<html lang="<%= t.lang %>">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> — <%= (typeof tenant !== 'undefined' && tenant && tenant.name) ? tenant.name : 'ProjectHub' %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/help.css">
+  <% if (typeof tenant !== 'undefined' && tenant && tenant.brand_color && tenant.brand_color !== '#6366f1') { %>
+  <style>:root { --primary: <%= tenant.brand_color %>; --primary-dark: <%= tenant.brand_color_dark || tenant.brand_color %>; }</style>
+  <% } %>
+</head>
+<body class="help-body">
+  <nav class="help-nav">
+    <div class="help-nav-inner">
+      <a href="<%= base %>" class="help-logo">
+        <% if (typeof tenant !== 'undefined' && tenant && tenant.logo_url) { %><img src="<%= tenant.logo_url %>" alt="" style="width:30px;height:30px;border-radius:6px;object-fit:contain"><% } else { %><div class="logo-icon"><%= (typeof tenant !== 'undefined' && tenant && tenant.name) ? tenant.name.charAt(0).toUpperCase() : 'P' %></div><% } %>
+        <span><%= t.help_title %></span>
+      </a>
+      <div class="help-nav-actions">
+        <a href="<%= base %>/my-tickets" class="btn btn-ghost btn-sm">← <%= t.help_my_tickets || 'Mes demandes' %></a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="help-main">
+    <div class="help-breadcrumb">
+      <a href="<%= base %>"><%= t.help_title %></a>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+      <a href="<%= base %>/my-tickets"><%= t.help_my_tickets || 'Mes demandes' %></a>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+      <span><%= ticket.reference %></span>
+    </div>
+
+    <div class="help-submit-container" style="max-width:800px">
+
+      <!-- Ticket header -->
+      <div class="td-header">
+        <div class="td-header-top">
+          <span class="my-ticket-ref"><%= ticket.reference %></span>
+          <span class="my-ticket-status status-<%= ticket.status %>">
+            <%= ticket.status === 'open' ? '🟢 Ouvert' : ticket.status === 'in_progress' ? '🔵 En cours' : ticket.status === 'waiting' ? '🟡 En attente' : ticket.status === 'resolved' ? '✅ Résolu' : '⚫ Fermé' %>
+          </span>
+        </div>
+        <h1 style="margin:.5rem 0 .25rem;font-size:1.3rem"><%= ticket.subject %></h1>
+        <p style="color:var(--text-muted);font-size:.85rem">Créé le <%= new Date(ticket.created_at).toLocaleDateString(dateLocale) %> à <%= new Date(ticket.created_at).toLocaleTimeString(dateLocale, {hour:'2-digit',minute:'2-digit'}) %></p>
+      </div>
+
+      <!-- Original description -->
+      <div class="td-description">
+        <h3 style="font-size:.9rem;color:var(--text-muted);margin-bottom:.75rem">📝 Description</h3>
+        <div style="white-space:pre-wrap;line-height:1.6"><%= ticket.description %></div>
+      </div>
+
+      <!-- Conversation -->
+      <div class="td-conversation">
+        <h3 style="font-size:.9rem;color:var(--text-muted);margin-bottom:.75rem">💬 Conversation (<%= messages.length %>)</h3>
+
+        <% if (messages.length === 0) { %>
+          <div style="text-align:center;padding:1.5rem;color:var(--text-muted);background:var(--bg-tertiary);border-radius:var(--radius)">
+            Aucune réponse pour le moment. L'équipe support reviendra vers vous rapidement.
+          </div>
+        <% } else { %>
+          <div class="td-messages">
+            <% messages.forEach(msg => { 
+              const isVisitor = msg.content.startsWith('💬 [');
+            %>
+              <div class="td-msg <%= isVisitor ? 'td-msg-visitor' : 'td-msg-agent' %>">
+                <div class="td-msg-header">
+                  <div class="td-msg-avatar" style="background:<%= isVisitor ? '#6366f1' : msg.avatar_color || '#10b981' %>">
+                    <%= isVisitor ? (ticket.client_name ? ticket.client_name.charAt(0).toUpperCase() : 'V') : (msg.full_name ? msg.full_name.charAt(0).toUpperCase() : 'S') %>
+                  </div>
+                  <div>
+                    <strong><%= isVisitor ? (ticket.client_name || 'Vous') : (msg.full_name || 'Support') %></strong>
+                    <span style="font-size:.75rem;color:var(--text-muted);margin-left:.5rem">
+                      <%= new Date(msg.created_at).toLocaleDateString(dateLocale) %> <%= new Date(msg.created_at).toLocaleTimeString(dateLocale, {hour:'2-digit',minute:'2-digit'}) %>
+                    </span>
+                  </div>
+                </div>
+                <div class="td-msg-content"><%- (isVisitor ? msg.content.replace(/^💬 \[[^\]]*\]: /, '') : msg.content).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">$1</a>') %></div>
+              </div>
+            <% }) %>
+          </div>
+        <% } %>
+      </div>
+
+      <!-- Reply form -->
+      <% if (ticket.status !== 'closed') { %>
+        <div class="td-reply">
+          <h3 style="font-size:.9rem;color:var(--text-muted);margin-bottom:.75rem">✏️ Répondre</h3>
+          <form method="POST" action="<%= base %>/my-tickets/<%= ticket.reference %>/reply">
+            <textarea name="content" rows="4" placeholder="Écrivez votre message..." required style="width:100%;resize:vertical;margin-bottom:.75rem"></textarea>
+            <button type="submit" class="btn btn-primary">📨 Envoyer</button>
+          </form>
+        </div>
+      <% } else { %>
+        <div style="text-align:center;padding:1rem;background:var(--bg-tertiary);border-radius:var(--radius);color:var(--text-muted);margin-top:1rem">
+          🔒 Ce ticket est fermé. <a href="<%= base %>/submit" style="color:var(--primary)">Soumettre une nouvelle demande</a>
+        </div>
+      <% } %>
+    </div>
+  </main>
+
+  <footer class="help-footer">
+    <p>&copy; <%= new Date().getFullYear() %> <%= (typeof tenant !== 'undefined' && tenant && tenant.name) ? tenant.name : 'ProjectHub' %></p>
+  </footer>
+
+  <style>
+    .td-header { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; }
+    .td-header-top { display: flex; justify-content: space-between; align-items: center; }
+    .td-description { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; }
+    .td-conversation { margin-bottom: 1rem; }
+    .td-messages { display: flex; flex-direction: column; gap: .75rem; }
+    .td-msg { padding: 1rem 1.25rem; border-radius: var(--radius); border: 1px solid var(--border); }
+    .td-msg-agent { background: var(--bg-secondary); }
+    .td-msg-visitor { background: rgba(99,102,241,.05); border-color: rgba(99,102,241,.2); }
+    .td-msg-header { display: flex; align-items: center; gap: .6rem; margin-bottom: .5rem; }
+    .td-msg-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: .75rem; font-weight: 700; flex-shrink: 0; }
+    .td-msg-content { line-height: 1.6; white-space: pre-wrap; }
+    .td-msg-content a { color: var(--primary); text-decoration: underline; }
+    .td-reply { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+    .my-ticket-ref { font-family: monospace; font-size: .8rem; color: var(--primary); font-weight: 700; background: rgba(99,102,241,.1); padding: .15rem .5rem; border-radius: 4px; }
+    .my-ticket-status { font-size: .8rem; font-weight: 600; }
+    .status-open { color: #10b981; } .status-in_progress { color: #6366f1; }
+    .status-waiting { color: #f59e0b; } .status-resolved, .status-closed { color: #6b7280; }
+    .td-new-msg { animation: fadeIn .3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+
+  <script>
+    // Auto-poll for new messages every 8 seconds
+    let lastMsgCount = <%= messages.length %>;
+    setInterval(async () => {
+      try {
+        const res = await fetch(window.location.href);
+        const html = await res.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const newMessages = doc.querySelectorAll('.td-msg');
+        if (newMessages.length > lastMsgCount) {
+          // New messages arrived — update the conversation section
+          const container = document.querySelector('.td-messages') || document.querySelector('.td-conversation');
+          const currentContainer = document.querySelector('.td-messages');
+          const newContainer = doc.querySelector('.td-messages');
+          if (newContainer && currentContainer) {
+            currentContainer.innerHTML = newContainer.innerHTML;
+          }
+          // Also update the count in the header
+          const h3 = document.querySelector('.td-conversation h3');
+          const newH3 = doc.querySelector('.td-conversation h3');
+          if (h3 && newH3) h3.innerHTML = newH3.innerHTML;
+          lastMsgCount = newMessages.length;
+        }
+      } catch (e) { /* ignore polling errors */ }
+    }, 8000);
+  </script>
+</body>
+</html>

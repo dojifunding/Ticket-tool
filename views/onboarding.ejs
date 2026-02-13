@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="<%= t.lang %>">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= t.onboarding_title || 'Configuration' %> — ProjectHub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .onboarding-body { min-height:100vh; background:var(--bg-primary); display:flex; align-items:center; justify-content:center; padding:2rem; }
+    .onboarding-container { width:100%; max-width:640px; }
+    .onboarding-card { background:var(--bg-card); border:1px solid var(--border); border-radius:16px; padding:2.5rem; }
+
+    /* Progress bar */
+    .ob-progress { display:flex; gap:8px; margin-bottom:2rem; }
+    .ob-progress-step { flex:1; height:4px; border-radius:4px; background:var(--border); transition:background .4s; }
+    .ob-progress-step.active { background:var(--accent); }
+    .ob-progress-step.done { background:var(--success); }
+
+    /* Step header */
+    .ob-step-header { text-align:center; margin-bottom:2rem; }
+    .ob-step-icon { font-size:2.5rem; margin-bottom:.75rem; }
+    .ob-step-header h2 { font-size:1.5rem; font-weight:700; color:var(--text-primary); margin:0 0 .5rem; }
+    .ob-step-header p { color:var(--text-muted); font-size:.9rem; margin:0; }
+
+    /* Steps */
+    .ob-step { display:none; animation:fadeSlide .4s ease; }
+    .ob-step.active { display:block; }
+    @keyframes fadeSlide { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+
+    /* Form elements */
+    .ob-option-grid { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:1.5rem; }
+    .ob-option { display:flex; align-items:center; gap:.75rem; padding:1rem; border:2px solid var(--border); border-radius:12px; cursor:pointer; transition:all .2s; }
+    .ob-option:hover { border-color:var(--accent); background:rgba(99,102,241,.05); }
+    .ob-option.selected { border-color:var(--accent); background:rgba(99,102,241,.1); }
+    .ob-option input[type=radio], .ob-option input[type=checkbox] { display:none; }
+    .ob-option-icon { font-size:1.3rem; }
+    .ob-option-label { font-size:.85rem; font-weight:600; color:var(--text-primary); }
+
+    /* AI Profile cards */
+    .ob-profile-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:.6rem; margin-bottom:.75rem; }
+    .ob-profile-card { display:flex; flex-direction:column; align-items:center; text-align:center; padding:.85rem .5rem; border:2px solid var(--border); border-radius:12px; cursor:pointer; transition:all .2s; gap:.3rem; }
+    .ob-profile-card:hover { border-color:var(--accent); background:rgba(99,102,241,.04); transform:translateY(-1px); }
+    .ob-profile-card.selected { border-color:var(--accent); background:rgba(99,102,241,.1); box-shadow:0 0 0 3px rgba(99,102,241,.15); }
+    .ob-profile-card input[type=radio] { display:none; }
+    .ob-profile-icon { font-size:1.5rem; }
+    .ob-profile-name { font-size:.75rem; font-weight:700; color:var(--text-primary); line-height:1.2; }
+    .ob-profile-desc { font-size:.65rem; color:var(--text-muted); line-height:1.3; }
+    @media (max-width:540px) { .ob-profile-grid { grid-template-columns:1fr 1fr; } }
+
+    /* Toggle switch */
+    .ob-toggle-row { display:flex; align-items:center; justify-content:space-between; padding:.85rem 1rem; border:1px solid var(--border); border-radius:10px; margin-bottom:.5rem; }
+    .ob-toggle-label { display:flex; align-items:center; gap:.75rem; }
+    .ob-toggle-label span:first-child { font-size:1.2rem; }
+    .ob-toggle-label .label-text { font-size:.85rem; font-weight:500; color:var(--text-primary); }
+    .ob-toggle-label .label-desc { font-size:.75rem; color:var(--text-muted); }
+    .toggle-switch { position:relative; width:44px; height:24px; }
+    .toggle-switch input { opacity:0; width:0; height:0; }
+    .toggle-slider { position:absolute; cursor:pointer; inset:0; background:var(--border); border-radius:24px; transition:.3s; }
+    .toggle-slider:before { content:''; position:absolute; height:18px; width:18px; left:3px; bottom:3px; background:white; border-radius:50%; transition:.3s; }
+    .toggle-switch input:checked + .toggle-slider { background:var(--accent); }
+    .toggle-switch input:checked + .toggle-slider:before { transform:translateX(20px); }
+
+    /* Buttons */
+    .ob-actions { display:flex; gap:1rem; margin-top:2rem; }
+    .ob-actions .btn { flex:1; }
+    .btn-outline { background:transparent; border:1px solid var(--border); color:var(--text-primary); }
+    .btn-outline:hover { border-color:var(--text-muted); }
+
+    /* Skip link */
+    .ob-skip { text-align:center; margin-top:1.25rem; }
+    .ob-skip a { color:var(--text-muted); font-size:.8rem; text-decoration:none; }
+    .ob-skip a:hover { color:var(--text-primary); }
+
+    /* Final step */
+    .ob-final-icon { font-size:4rem; text-align:center; margin-bottom:1rem; }
+    .ob-checklist { list-style:none; padding:0; margin:1.5rem 0; }
+    .ob-checklist li { display:flex; align-items:center; gap:.75rem; padding:.6rem 0; color:var(--text-secondary); font-size:.9rem; }
+    .ob-checklist li .check { color:var(--success); font-size:1.1rem; }
+
+    /* Responsive */
+    @media (max-width:480px) {
+      .ob-option-grid { grid-template-columns:1fr; }
+      .onboarding-card { padding:1.5rem; }
+    }
+  </style>
+</head>
+<body class="onboarding-body">
+  <div class="onboarding-container">
+    <div class="onboarding-card">
+      <!-- Progress -->
+      <div class="ob-progress">
+        <div class="ob-progress-step active" id="prog1"></div>
+        <div class="ob-progress-step" id="prog2"></div>
+        <div class="ob-progress-step" id="prog3"></div>
+        <div class="ob-progress-step" id="prog4"></div>
+      </div>
+
+      <!-- ═══ STEP 1: Company Info ═══ -->
+      <div class="ob-step active" id="step1">
+        <div class="ob-step-header">
+          <div class="ob-step-icon">🏢</div>
+          <h2><%= t.onboarding_step1_title || 'Parlez-nous de votre entreprise' %></h2>
+          <p><%= t.onboarding_step1_desc || 'Ces informations aideront à personnaliser votre espace de travail.' %></p>
+        </div>
+
+        <div class="form-group">
+          <label><%= t.onboarding_company_name || 'Nom de l\'entreprise' %></label>
+          <input type="text" id="ob_company_name" value="<%= tenant ? tenant.name : '' %>" placeholder="Mon Entreprise">
+        </div>
+
+        <label style="display:block;margin-bottom:.5rem;font-weight:600;font-size:.85rem;color:var(--text-secondary)"><%= t.onboarding_company_type || 'Type d\'activité' %></label>
+        <div class="ob-option-grid" id="companyTypeGrid">
+          <label class="ob-option" onclick="selectOption(this,'companyType')">
+            <input type="radio" name="companyType" value="saas">
+            <span class="ob-option-icon">💻</span>
+            <span class="ob-option-label">SaaS / Tech</span>
+          </label>
+          <label class="ob-option" onclick="selectOption(this,'companyType')">
+            <input type="radio" name="companyType" value="ecommerce">
+            <span class="ob-option-icon">🛍️</span>
+            <span class="ob-option-label">E-commerce</span>
+          </label>
+          <label class="ob-option" onclick="selectOption(this,'companyType')">
+            <input type="radio" name="companyType" value="services">
+            <span class="ob-option-icon">🏗️</span>
+            <span class="ob-option-label"><%= t.onboarding_type_services || 'Services / Conseil' %></span>
+          </label>
+          <label class="ob-option" onclick="selectOption(this,'companyType')">
+            <input type="radio" name="companyType" value="finance">
+            <span class="ob-option-icon">💰</span>
+            <span class="ob-option-label"><%= t.onboarding_type_finance || 'Finance / Trading' %></span>
+          </label>
+          <label class="ob-option" onclick="selectOption(this,'companyType')">
+            <input type="radio" name="companyType" value="education">
+            <span class="ob-option-icon">🎓</span>
+            <span class="ob-option-label"><%= t.onboarding_type_education || 'Éducation' %></span>
+          </label>
+          <label class="ob-option" onclick="selectOption(this,'companyType')">
+            <input type="radio" name="companyType" value="legal">
+            <span class="ob-option-icon">⚖️</span>
+            <span class="ob-option-label"><%= t.onboarding_type_legal || 'Juridique / Avocats' %></span>
+          </label>
+          <label class="ob-option" onclick="selectOption(this,'companyType')">
+            <input type="radio" name="companyType" value="health">
+            <span class="ob-option-icon">🏥</span>
+            <span class="ob-option-label"><%= t.onboarding_type_health || 'Santé / Médical' %></span>
+          </label>
+          <label class="ob-option" onclick="selectOption(this,'companyType')">
+            <input type="radio" name="companyType" value="realestate">
+            <span class="ob-option-icon">🏠</span>
+            <span class="ob-option-label"><%= t.onboarding_type_realestate || 'Immobilier' %></span>
+          </label>
+          <label class="ob-option" onclick="selectOption(this,'companyType')">
+            <input type="radio" name="companyType" value="restaurant">
+            <span class="ob-option-icon">🍽️</span>
+            <span class="ob-option-label"><%= t.onboarding_type_restaurant || 'Restauration / Hôtel' %></span>
+          </label>
+          <label class="ob-option" onclick="selectOption(this,'companyType')">
+            <input type="radio" name="companyType" value="other">
+            <span class="ob-option-icon">🏢</span>
+            <span class="ob-option-label"><%= t.onboarding_type_other || 'Autre' %></span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label><%= t.onboarding_website || 'Site web (optionnel)' %></label>
+          <input type="url" id="ob_website" placeholder="https://www.example.com">
+        </div>
+
+        <div class="ob-actions">
+          <button class="btn btn-primary btn-full" onclick="goStep(2, saveStep1)">
+            <%= t.onboarding_next || 'Suivant' %>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+        </div>
+        <div class="ob-skip"><a href="#" onclick="skipOnboarding()"><%= t.onboarding_skip || 'Passer la configuration →' %></a></div>
+      </div>
+
+      <!-- ═══ STEP 2: AI Configuration ═══ -->
+      <div class="ob-step" id="step2">
+        <div class="ob-step-header">
+          <div class="ob-step-icon">🤖</div>
+          <h2><%= t.onboarding_step2_title || 'Configuration de l\'IA' %></h2>
+          <p><%= t.onboarding_step2_desc || 'Choisissez le profil IA adapté à votre secteur. L\'IA sera automatiquement personnalisée.' %></p>
+        </div>
+
+        <div class="ob-toggle-row">
+          <div class="ob-toggle-label">
+            <span>🤖</span>
+            <div>
+              <div class="label-text"><%= t.onboarding_ai_enabled || 'IA activée' %></div>
+              <div class="label-desc"><%= t.onboarding_ai_enabled_desc || 'Active l\'intelligence artificielle dans votre espace' %></div>
+            </div>
+          </div>
+          <label class="toggle-switch"><input type="checkbox" id="ob_ai_enabled" checked onchange="toggleAiOptions()"><span class="toggle-slider"></span></label>
+        </div>
+
+        <div id="aiOptionsBlock">
+
+          <!-- AI Profile Selector -->
+          <label style="display:block;margin:1.25rem 0 .5rem;font-weight:600;font-size:.85rem;color:var(--text-secondary)"><%= t.onboarding_ai_profile || 'Profil IA de votre entreprise' %></label>
+          <div class="ob-profile-grid" id="aiProfileGrid">
+            <label class="ob-profile-card" onclick="selectProfile(this,'finance')">
+              <input type="radio" name="aiProfile" value="finance">
+              <span class="ob-profile-icon">🏦</span>
+              <span class="ob-profile-name"><%= t.profile_finance || 'Finance & Banque' %></span>
+              <span class="ob-profile-desc"><%= t.profile_finance_desc || 'Ton rigoureux, conformité, disclaimers financiers' %></span>
+            </label>
+            <label class="ob-profile-card" onclick="selectProfile(this,'legal')">
+              <input type="radio" name="aiProfile" value="legal">
+              <span class="ob-profile-icon">⚖️</span>
+              <span class="ob-profile-name"><%= t.profile_legal || 'Juridique & Avocats' %></span>
+              <span class="ob-profile-desc"><%= t.profile_legal_desc || 'Vocabulaire juridique, prudent, disclaimers' %></span>
+            </label>
+            <label class="ob-profile-card" onclick="selectProfile(this,'saas')">
+              <input type="radio" name="aiProfile" value="saas">
+              <span class="ob-profile-icon">💻</span>
+              <span class="ob-profile-name"><%= t.profile_saas || 'SaaS & Tech' %></span>
+              <span class="ob-profile-desc"><%= t.profile_saas_desc || 'Décontracté pro, orienté solution' %></span>
+            </label>
+            <label class="ob-profile-card" onclick="selectProfile(this,'ecommerce')">
+              <input type="radio" name="aiProfile" value="ecommerce">
+              <span class="ob-profile-icon">🛍️</span>
+              <span class="ob-profile-name"><%= t.profile_ecommerce || 'E-commerce & Retail' %></span>
+              <span class="ob-profile-desc"><%= t.profile_ecommerce_desc || 'Chaleureux, satisfaction client, proactif' %></span>
+            </label>
+            <label class="ob-profile-card" onclick="selectProfile(this,'education')">
+              <input type="radio" name="aiProfile" value="education">
+              <span class="ob-profile-icon">🎓</span>
+              <span class="ob-profile-name"><%= t.profile_education || 'Éducation & Formation' %></span>
+              <span class="ob-profile-desc"><%= t.profile_education_desc || 'Pédagogique, patient, encourageant' %></span>
+            </label>
+            <label class="ob-profile-card" onclick="selectProfile(this,'health')">
+              <input type="radio" name="aiProfile" value="health">
+              <span class="ob-profile-icon">🏥</span>
+              <span class="ob-profile-name"><%= t.profile_health || 'Santé & Médical' %></span>
+              <span class="ob-profile-desc"><%= t.profile_health_desc || 'Empathique, disclaimers médicaux' %></span>
+            </label>
+            <label class="ob-profile-card" onclick="selectProfile(this,'realestate')">
+              <input type="radio" name="aiProfile" value="realestate">
+              <span class="ob-profile-icon">🏠</span>
+              <span class="ob-profile-name"><%= t.profile_realestate || 'Immobilier' %></span>
+              <span class="ob-profile-desc"><%= t.profile_realestate_desc || 'Enthousiaste, orienté projet de vie' %></span>
+            </label>
+            <label class="ob-profile-card" onclick="selectProfile(this,'services')">
+              <input type="radio" name="aiProfile" value="services">
+              <span class="ob-profile-icon">🏗️</span>
+              <span class="ob-profile-name"><%= t.profile_services || 'Services & Conseil' %></span>
+              <span class="ob-profile-desc"><%= t.profile_services_desc || 'Orienté résultat, cadrage attentes' %></span>
+            </label>
+            <label class="ob-profile-card" onclick="selectProfile(this,'restaurant')">
+              <input type="radio" name="aiProfile" value="restaurant">
+              <span class="ob-profile-icon">🍽️</span>
+              <span class="ob-profile-name"><%= t.profile_restaurant || 'Restauration & Hôtellerie' %></span>
+              <span class="ob-profile-desc"><%= t.profile_restaurant_desc || 'Accueillant, gourmand, expérience client' %></span>
+            </label>
+            <label class="ob-profile-card" onclick="selectProfile(this,'generic')">
+              <input type="radio" name="aiProfile" value="generic">
+              <span class="ob-profile-icon">🏢</span>
+              <span class="ob-profile-name"><%= t.profile_generic || 'Généraliste' %></span>
+              <span class="ob-profile-desc"><%= t.profile_generic_desc || 'Polyvalent, adapté à tout secteur' %></span>
+            </label>
+          </div>
+
+          <div style="background:rgba(99,102,241,.06);border-radius:10px;padding:.85rem 1rem;margin:.75rem 0 1rem;display:none" id="profilePreview">
+            <p style="margin:0;font-size:.8rem;color:var(--text-secondary)">
+              <strong>✨ <%= t.onboarding_profile_preview || 'Aperçu' %></strong> : <span id="profilePreviewText"></span>
+            </p>
+          </div>
+
+          <!-- AI Feature toggles -->
+          <label style="display:block;margin:1rem 0 .5rem;font-weight:600;font-size:.85rem;color:var(--text-secondary)"><%= t.onboarding_ai_features || 'Fonctionnalités IA' %></label>
+
+          <div class="ob-toggle-row">
+            <div class="ob-toggle-label">
+              <span>🎫</span>
+              <div>
+                <div class="label-text"><%= t.onboarding_ai_tickets || 'Suggestions de réponses tickets' %></div>
+                <div class="label-desc"><%= t.onboarding_ai_tickets_desc || 'L\'IA propose des réponses aux agents support' %></div>
+              </div>
+            </div>
+            <label class="toggle-switch"><input type="checkbox" id="ob_ai_tickets" checked><span class="toggle-slider"></span></label>
+          </div>
+
+          <div class="ob-toggle-row">
+            <div class="ob-toggle-label">
+              <span>💬</span>
+              <div>
+                <div class="label-text"><%= t.onboarding_ai_livechat || 'Chatbot IA (livechat)' %></div>
+                <div class="label-desc"><%= t.onboarding_ai_livechat_desc || 'L\'IA répond aux visiteurs avant escalade humaine' %></div>
+              </div>
+            </div>
+            <label class="toggle-switch"><input type="checkbox" id="ob_ai_livechat" checked><span class="toggle-slider"></span></label>
+          </div>
+
+          <div class="ob-toggle-row">
+            <div class="ob-toggle-label">
+              <span>📚</span>
+              <div>
+                <div class="label-text"><%= t.onboarding_ai_faq || 'Génération FAQ automatique' %></div>
+                <div class="label-desc"><%= t.onboarding_ai_faq_desc || 'Génère des articles FAQ depuis votre base de connaissances' %></div>
+              </div>
+            </div>
+            <label class="toggle-switch"><input type="checkbox" id="ob_ai_faq" checked><span class="toggle-slider"></span></label>
+          </div>
+
+          <div class="form-group" style="margin-top:1rem">
+            <label><%= t.onboarding_ai_context || 'Personnalisation additionnelle (optionnel)' %></label>
+            <textarea id="ob_ai_context" rows="3" placeholder="<%= t.onboarding_ai_context_placeholder || 'Décrivez votre activité, vos produits, vos spécificités... L\'IA utilisera ces informations pour mieux répondre à vos clients.' %>" style="width:100%;resize:vertical;"></textarea>
+          </div>
+        </div>
+
+        <div class="ob-actions">
+          <button class="btn btn-outline" onclick="goStep(1)">← <%= t.onboarding_back || 'Retour' %></button>
+          <button class="btn btn-primary" onclick="goStep(3, saveStep2)">
+            <%= t.onboarding_next || 'Suivant' %>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- ═══ STEP 3: Import Resources ═══ -->
+      <div class="ob-step" id="step3">
+        <div class="ob-step-header">
+          <div class="ob-step-icon">📥</div>
+          <h2><%= t.onboarding_step3_title || 'Importer des ressources' %></h2>
+          <p><%= t.onboarding_step3_desc || 'Vous pourrez importer votre base de connaissances plus tard dans les paramètres.' %></p>
+        </div>
+
+        <div class="ob-toggle-row" style="border:2px dashed var(--border);background:transparent;">
+          <div class="ob-toggle-label">
+            <span>🌐</span>
+            <div>
+              <div class="label-text"><%= t.onboarding_import_url || 'Importer depuis une URL' %></div>
+              <div class="label-desc"><%= t.onboarding_import_url_desc || 'Scrapez votre site web ou FAQ existante pour alimenter l\'IA' %></div>
+            </div>
+          </div>
+          <span style="color:var(--text-muted);font-size:.8rem"><%= t.onboarding_later || 'Après la configuration' %></span>
+        </div>
+
+        <div class="ob-toggle-row" style="border:2px dashed var(--border);background:transparent;">
+          <div class="ob-toggle-label">
+            <span>📄</span>
+            <div>
+              <div class="label-text"><%= t.onboarding_import_file || 'Importer des fichiers' %></div>
+              <div class="label-desc"><%= t.onboarding_import_file_desc || 'PDF, Word, texte — vos documents internes' %></div>
+            </div>
+          </div>
+          <span style="color:var(--text-muted);font-size:.8rem"><%= t.onboarding_later || 'Après la configuration' %></span>
+        </div>
+
+        <div class="ob-toggle-row" style="border:2px dashed var(--border);background:transparent;">
+          <div class="ob-toggle-label">
+            <span>✍️</span>
+            <div>
+              <div class="label-text"><%= t.onboarding_import_text || 'Ajouter du texte manuellement' %></div>
+              <div class="label-desc"><%= t.onboarding_import_text_desc || 'Copiez-collez vos procédures, FAQ, informations' %></div>
+            </div>
+          </div>
+          <span style="color:var(--text-muted);font-size:.8rem"><%= t.onboarding_later || 'Après la configuration' %></span>
+        </div>
+
+        <div style="background:rgba(99,102,241,.08);border-radius:10px;padding:1rem;margin-top:1rem;">
+          <p style="margin:0;font-size:.85rem;color:var(--text-secondary);">
+            💡 <strong><%= t.onboarding_tip_title || 'Astuce' %></strong> : <%= t.onboarding_tip_kb || 'Vous retrouverez toutes ces options dans Administration → Base de connaissances une fois connecté.' %>
+          </p>
+        </div>
+
+        <div class="ob-actions">
+          <button class="btn btn-outline" onclick="goStep(2)">← <%= t.onboarding_back || 'Retour' %></button>
+          <button class="btn btn-primary" onclick="goStep(4, saveStep3)">
+            <%= t.onboarding_next || 'Suivant' %>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- ═══ STEP 4: Ready! ═══ -->
+      <div class="ob-step" id="step4">
+        <div class="ob-step-header">
+          <div class="ob-final-icon">🚀</div>
+          <h2><%= t.onboarding_step4_title || 'Votre espace est prêt !' %></h2>
+          <p><%= t.onboarding_step4_desc || 'Voici un récapitulatif de votre configuration.' %></p>
+        </div>
+
+        <ul class="ob-checklist" id="obSummary">
+          <li><span class="check">✅</span> <span><%= t.onboarding_summary_company || 'Entreprise configurée' %></span></li>
+          <li><span class="check">✅</span> <span id="summaryAi"><%= t.onboarding_summary_ai || 'IA configurée' %></span></li>
+          <li><span class="check">✅</span> <span id="summaryProfile"><%= t.onboarding_summary_profile || 'Profil IA sélectionné' %></span></li>
+          <li><span class="check">✅</span> <span><%= t.onboarding_summary_categories || '6 catégories FAQ créées' %></span></li>
+          <li><span class="check">⏳</span> <span><%= t.onboarding_summary_kb || 'Base de connaissances à alimenter' %></span></li>
+        </ul>
+
+        <div style="background:rgba(16,185,129,.08);border-radius:10px;padding:1rem;margin-top:1rem;">
+          <p style="margin:0;font-size:.85rem;color:var(--text-secondary);">
+            🎉 <strong><%= t.onboarding_trial_reminder || 'Votre essai gratuit de 7 jours commence maintenant.' %></strong>
+            <%= t.onboarding_trial_reminder_desc || 'Explorez toutes les fonctionnalités sans limite.' %>
+          </p>
+        </div>
+
+        <div class="ob-actions">
+          <button class="btn btn-primary btn-full" onclick="completeOnboarding()" id="obCompleteBtn">
+            🚀 <%= t.onboarding_start || 'Accéder à mon espace' %>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentStep = 1;
+    let selectedProfile = 'generic';
+
+    // Auto-map company type → AI profile
+    const typeToProfile = {
+      saas: 'saas', ecommerce: 'ecommerce', services: 'services',
+      finance: 'finance', education: 'education', legal: 'legal',
+      health: 'health', realestate: 'realestate', restaurant: 'restaurant',
+      other: 'generic'
+    };
+
+    // Profile preview texts
+    const profilePreviews = {
+      finance: '<%= (t.lang === "en") ? "Formal, rigorous, data-driven. Systematic financial disclaimers." : "Formel, rigoureux, orienté données. Disclaimers financiers systématiques." %>',
+      legal: '<%= (t.lang === "en") ? "Very formal, precise legal vocabulary. Never gives legal advice." : "Très formel, vocabulaire juridique précis. Ne donne jamais de conseil juridique." %>',
+      saas: '<%= (t.lang === "en") ? "Casual but professional, solution-oriented. Adapts to technical level." : "Décontracté mais pro, orienté solution. Adapte son niveau technique." %>',
+      ecommerce: '<%= (t.lang === "en") ? "Warm, proactive on promotions. Mentions return policy when relevant." : "Chaleureux, proactif sur les promos. Mentionne la politique de retour." %>',
+      education: '<%= (t.lang === "en") ? "Pedagogical, patient, encouraging. Never gives exam answers." : "Pédagogique, patient, encourageant. Ne donne jamais de réponse aux examens." %>',
+      health: '<%= (t.lang === "en") ? "Empathetic, rigorous. Systematic medical disclaimers, emergency referrals." : "Empathique, rigoureux. Disclaimers médicaux systématiques, renvoi urgences." %>',
+      realestate: '<%= (t.lang === "en") ? "Enthusiastic, project-oriented. Never guarantees prices or timelines." : "Enthousiaste, orienté projet. Ne garantit jamais de prix ni de délais." %>',
+      services: '<%= (t.lang === "en") ? "Result-oriented, structured. Sets expectations, redirects for quotes." : "Orienté résultat, structuré. Cadre les attentes, redirige pour les devis." %>',
+      restaurant: '<%= (t.lang === "en") ? "Welcoming, gourmet, attentive. Always asks about allergies." : "Accueillant, gourmand, attentionné. Demande toujours les allergies." %>',
+      generic: '<%= (t.lang === "en") ? "Versatile professional tone, suitable for all sectors." : "Ton professionnel polyvalent, adapté à tout secteur." %>'
+    };
+
+    function goStep(n, saveFn) {
+      if (saveFn) {
+        saveFn().then(() => showStep(n)).catch(e => console.error(e));
+      } else {
+        showStep(n);
+      }
+    }
+
+    function showStep(n) {
+      document.querySelectorAll('.ob-step').forEach(s => s.classList.remove('active'));
+      document.getElementById('step' + n).classList.add('active');
+
+      for (let i = 1; i <= 4; i++) {
+        const el = document.getElementById('prog' + i);
+        el.className = 'ob-progress-step';
+        if (i < n) el.classList.add('done');
+        if (i === n) el.classList.add('active');
+      }
+      currentStep = n;
+
+      // Update summary on step 4
+      if (n === 4) {
+        const card = document.querySelector('.ob-profile-card.selected');
+        if (card) {
+          const name = card.querySelector('.ob-profile-name').textContent;
+          const icon = card.querySelector('.ob-profile-icon').textContent;
+          document.getElementById('summaryProfile').textContent = icon + ' ' + name;
+        }
+      }
+    }
+
+    function selectOption(el, name) {
+      document.querySelectorAll('input[name="' + name + '"]').forEach(r => r.closest('.ob-option').classList.remove('selected'));
+      el.classList.add('selected');
+      el.querySelector('input').checked = true;
+    }
+
+    function selectProfile(el, profileId) {
+      document.querySelectorAll('.ob-profile-card').forEach(c => c.classList.remove('selected'));
+      el.classList.add('selected');
+      el.querySelector('input').checked = true;
+      selectedProfile = profileId;
+
+      // Show preview
+      const preview = document.getElementById('profilePreview');
+      const text = document.getElementById('profilePreviewText');
+      if (profilePreviews[profileId]) {
+        text.textContent = profilePreviews[profileId];
+        preview.style.display = 'block';
+      }
+    }
+
+    function toggleAiOptions() {
+      document.getElementById('aiOptionsBlock').style.display = document.getElementById('ob_ai_enabled').checked ? 'block' : 'none';
+    }
+
+    // Auto-select AI profile when company type changes in step 1
+    function autoSelectProfile() {
+      const type = document.querySelector('input[name="companyType"]:checked');
+      if (type && typeToProfile[type.value]) {
+        const profileId = typeToProfile[type.value];
+        const card = document.querySelector('.ob-profile-card input[value="' + profileId + '"]');
+        if (card) {
+          selectProfile(card.closest('.ob-profile-card'), profileId);
+        }
+      }
+    }
+
+    // Attach auto-mapping to company type selection
+    document.querySelectorAll('input[name="companyType"]').forEach(r => {
+      r.addEventListener('change', autoSelectProfile);
+    });
+
+    async function saveStep1() {
+      const type = document.querySelector('input[name="companyType"]:checked');
+      await fetch('/onboarding/step1', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_name: document.getElementById('ob_company_name').value,
+          company_type: type ? type.value : '',
+          company_website: document.getElementById('ob_website').value,
+          locale: '<%= t.lang %>'
+        })
+      });
+      // Auto-select matching AI profile
+      autoSelectProfile();
+    }
+
+    async function saveStep2() {
+      const profile = document.querySelector('input[name="aiProfile"]:checked');
+      await fetch('/onboarding/step2', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ai_enabled: document.getElementById('ob_ai_enabled').checked ? 1 : 0,
+          ai_tickets: document.getElementById('ob_ai_tickets').checked ? 1 : 0,
+          ai_livechat: document.getElementById('ob_ai_livechat').checked ? 1 : 0,
+          ai_faq: document.getElementById('ob_ai_faq').checked ? 1 : 0,
+          ai_profile: profile ? profile.value : 'generic',
+          custom_ai_context: document.getElementById('ob_ai_context').value
+        })
+      });
+    }
+
+    async function saveStep3() {
+      await fetch('/onboarding/step3', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    }
+
+    async function completeOnboarding() {
+      const btn = document.getElementById('obCompleteBtn');
+      btn.disabled = true;
+      btn.textContent = '<%= t.loading || "Chargement..." %>';
+      const res = await fetch('/onboarding/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const data = await res.json();
+      if (data.ok) window.location.href = data.redirect || '/';
+    }
+
+    async function skipOnboarding() {
+      await fetch('/onboarding/skip', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      window.location.href = '/';
+    }
+  </script>
+</body>
+</html>

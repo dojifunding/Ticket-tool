@@ -1,0 +1,181 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">🏷️ Catégories d'articles</h1>
+    <p class="page-subtitle"><%= categories.length %> catégorie(s)</p>
+  </div>
+  <div class="header-btns">
+    <a href="/admin/articles<%= companyId ? '?company=' + companyId : '' %>" class="btn btn-ghost">← Articles</a>
+    <button class="btn btn-primary" onclick="openModal('newCatModal')">+ Nouvelle catégorie</button>
+  </div>
+</div>
+
+<% if (typeof companies !== 'undefined' && companies.length > 0) { %>
+<div class="filters-bar" style="margin-bottom:1rem">
+  <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+    <span style="font-size:.85rem;font-weight:600">🏢 Entreprise :</span>
+    <a href="/admin/articles/categories" class="btn btn-xs <%= !companyId ? 'btn-primary' : 'btn-ghost' %>">Toutes</a>
+    <% companies.forEach(c => { %>
+      <a href="/admin/articles/categories?company=<%= c.id %>" class="btn btn-xs <%= companyId == c.id ? 'btn-primary' : 'btn-ghost' %>"><%= c.name %></a>
+    <% }) %>
+  </div>
+</div>
+<% } %>
+
+<div class="table-container">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width:50px">Icône</th>
+        <th>Nom</th>
+        <th>Nom EN</th>
+        <th>Slug</th>
+        <th>Entreprise</th>
+        <th>Articles</th>
+        <th>Position</th>
+        <th><%= t.actions %></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% categories.forEach(cat => { %>
+        <tr>
+          <td style="font-size:1.3rem;text-align:center"><%= cat.icon || '📁' %></td>
+          <td><strong><%= cat.name %></strong></td>
+          <td class="text-muted"><%= cat.name_en || '—' %></td>
+          <td class="text-muted" style="font-size:.8rem"><%= cat.slug || '—' %></td>
+          <td>
+            <% if (cat.company_name) { %>
+              <span class="company-tag"><%= cat.company_name %></span>
+            <% } else { %>
+              <span class="text-muted">Global</span>
+            <% } %>
+          </td>
+          <td><%= cat.article_count || 0 %></td>
+          <td><%= cat.position || 0 %></td>
+          <td>
+            <div class="action-btns">
+              <button class="btn btn-xs btn-ghost" title="Modifier"
+                onclick="editCat(<%= cat.id %>, '<%= (cat.name || '').replace(/'/g, "\\'") %>', '<%= (cat.name_en || '').replace(/'/g, "\\'") %>', '<%= cat.slug || '' %>', '<%= cat.icon || '📁' %>', <%= cat.position || 0 %>)">✏️</button>
+              <form method="POST" action="/admin/articles/categories/<%= cat.id %>/delete" style="display:inline"
+                    onsubmit="return confirm('Supprimer la catégorie « <%= cat.name %> » ? Les <%= cat.article_count || 0 %> article(s) associé(s) seront décatégorisés.')">
+                <button type="submit" class="btn btn-xs btn-ghost" title="Supprimer">🗑️</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+      <% }) %>
+      <% if (categories.length === 0) { %>
+        <tr><td colspan="8" class="empty-table">Aucune catégorie</td></tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+
+<!-- New Category Modal -->
+<div class="modal-overlay" id="newCatModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Nouvelle catégorie</h2>
+      <button class="modal-close" onclick="closeModal('newCatModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <form method="POST" action="/admin/articles/categories">
+        <div class="form-group">
+          <label>Nom *</label>
+          <input type="text" name="name" required placeholder="Ex: Démarrage, Facturation...">
+        </div>
+        <div class="form-group">
+          <label>Nom (EN)</label>
+          <input type="text" name="name_en" placeholder="English name">
+        </div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+          <div class="form-group">
+            <label>Icône</label>
+            <input type="text" name="icon" value="📁" placeholder="📁" style="font-size:1.2rem">
+          </div>
+          <div class="form-group">
+            <label>Position</label>
+            <input type="number" name="position" value="" placeholder="Auto">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Slug (auto si vide)</label>
+          <input type="text" name="slug" placeholder="auto-generated">
+        </div>
+        <% if (typeof companies !== 'undefined' && companies.length > 0) { %>
+        <div class="form-group">
+          <label>Entreprise</label>
+          <select name="company_id">
+            <option value="">— Globale —</option>
+            <% companies.forEach(c => { %>
+              <option value="<%= c.id %>" <%= companyId == c.id ? 'selected' : '' %>><%= c.name %></option>
+            <% }) %>
+          </select>
+        </div>
+        <% } %>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('newCatModal')">Annuler</button>
+          <button type="submit" class="btn btn-primary">Créer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Category Modal -->
+<div class="modal-overlay" id="editCatModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Modifier la catégorie</h2>
+      <button class="modal-close" onclick="closeModal('editCatModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <form method="POST" id="editCatForm">
+        <div class="form-group">
+          <label>Nom *</label>
+          <input type="text" name="name" id="editName" required>
+        </div>
+        <div class="form-group">
+          <label>Nom (EN)</label>
+          <input type="text" name="name_en" id="editNameEn">
+        </div>
+        <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+          <div class="form-group">
+            <label>Icône</label>
+            <input type="text" name="icon" id="editIcon" style="font-size:1.2rem">
+          </div>
+          <div class="form-group">
+            <label>Position</label>
+            <input type="number" name="position" id="editPosition">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Slug</label>
+          <input type="text" name="slug" id="editSlug">
+        </div>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+          <button type="button" class="btn btn-ghost" onclick="closeModal('editCatModal')">Annuler</button>
+          <button type="submit" class="btn btn-primary">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function editCat(id, name, nameEn, slug, icon, position) {
+  document.getElementById('editCatForm').action = '/admin/articles/categories/' + id + '/update';
+  document.getElementById('editName').value = name;
+  document.getElementById('editNameEn').value = nameEn;
+  document.getElementById('editSlug').value = slug;
+  document.getElementById('editIcon').value = icon;
+  document.getElementById('editPosition').value = position;
+  openModal('editCatModal');
+}
+</script>
+
+<%- include('../partials/foot') %>

@@ -66,6 +66,26 @@
         </select>
       </div>
       <div class="form-group">
+        <label>🏢 Entreprise</label>
+        <% if (typeof companies !== 'undefined' && companies.length > 0) { %>
+          <select name="company_id">
+            <option value="">— Aucune —</option>
+            <% companies.forEach(c => { %>
+              <option value="<%= c.id %>"
+                <%= (typeof companyId !== 'undefined' && companyId == c.id) ? 'selected' :
+                   (article && article.company_id === c.id) ? 'selected' : '' %>>
+                <%= c.name %>
+              </option>
+            <% }) %>
+          </select>
+        <% } else { %>
+          <input type="hidden" name="company_id" value="<%= (typeof companyId !== 'undefined' && companyId) ? companyId : '' %>">
+          <input type="text" value="Aucune entreprise" disabled class="input-disabled">
+        <% } %>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
         <label><%= t.articles_col_visibility %></label>
         <select name="is_public">
           <option value="1" <%= !article || article.is_public ? 'selected' : '' %>><%= t.articles_public %> — <%= t.articles_public_desc %></option>

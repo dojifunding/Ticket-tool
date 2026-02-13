@@ -6,6 +6,16 @@
     <div class="ticket-detail-title">
       <span class="ticket-ref-lg"><%= ticket.reference %></span>
       <% if (chatSession) { %><span class="livechat-badge"><%= t.chat_livechat_badge %></span><% } %>
+      <% if (ticket.company_name) { %>
+        <span class="company-badge-lg" style="--company-color: <%= ticket.company_color || '#6366f1' %>">
+          <% if (ticket.company_logo) { %>
+            <img src="<%= ticket.company_logo %>" alt="" style="width:18px;height:18px;border-radius:4px;object-fit:contain;vertical-align:middle">
+          <% } else { %>
+            <span class="company-badge-dot" style="background:<%= ticket.company_color || '#6366f1' %>"></span>
+          <% } %>
+          <%= ticket.company_name %>
+        </span>
+      <% } %>
       <h1 class="page-title"><%= ticket.subject %></h1>
     </div>
   </div>
@@ -46,7 +56,7 @@
                 <% if (msg.is_internal) { %><span class="internal-badge"><%= t.ticket_internal_badge %></span><% } %>
                 <time><%= new Date(msg.created_at).toLocaleString(dateLocale) %></time>
               </div>
-              <div class="message-content"><%= msg.content %></div>
+              <div class="message-content"><%- msg.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">$1</a>') %></div>
             </div>
           </div>
         <% }) %>
@@ -121,10 +131,37 @@
           <% }) %>
         </select>
       </div>
+      <% if (typeof companies !== 'undefined' && companies.length > 0) { %>
+        <div class="sidebar-field">
+          <label>🏢 Entreprise</label>
+          <select name="company_id">
+            <option value="">— Aucune —</option>
+            <% companies.forEach(c => { %>
+              <option value="<%= c.id %>" <%= ticket.company_id === c.id ? 'selected' : '' %>><%= c.name %></option>
+            <% }) %>
+          </select>
+        </div>
+      <% } %>
       <button type="submit" class="btn btn-primary btn-full"><%= t.update %></button>
     </form>
 
     <div class="sidebar-meta">
+      <% if (ticket.company_name) { %>
+        <div class="meta-item meta-company">
+          <span class="meta-label">🏢 Entreprise</span>
+          <a href="/admin/companies/<%= ticket.company_id %>/workspace" class="company-link" style="--company-color: <%= ticket.company_color || '#6366f1' %>">
+            <% if (ticket.company_logo) { %>
+              <img src="<%= ticket.company_logo %>" alt="" style="width:16px;height:16px;border-radius:3px;object-fit:contain">
+            <% } else { %>
+              <span class="company-badge-dot" style="background:<%= ticket.company_color || '#6366f1' %>"></span>
+            <% } %>
+            <%= ticket.company_name %>
+          </a>
+          <% if (ticket.company_slug) { %>
+            <a href="/help/c/<%= ticket.company_slug %>" target="_blank" class="text-muted text-sm" title="Voir le help center" style="margin-left:.25rem">🌐</a>
+          <% } %>
+        </div>
+      <% } %>
       <div class="meta-item">
         <span class="meta-label"><%= t.label_created_by %></span>
         <span><%= ticket.creator_name %></span>
@@ -141,7 +178,7 @@
       <% } %>
     </div>
 
-    <% if (!escalatedTask) { %>
+    <% if (!escalatedTask && escalationEnabled && escalationCategories.includes(ticket.category)) { %>
       <div class="escalation-section">
         <h4><%= t.ticket_escalate_title %></h4>
         <p class="text-muted text-sm"><%= t.ticket_escalate_subtitle %></p>
@@ -188,6 +225,10 @@
 
 <script>
 const ticketId = <%= ticket.id %>;
+function linkifyContent(text) {
+  return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline">$1</a>');
+}
 function sendMessage() {
   const input = document.getElementById('messageInput');
   const content = input.value.trim();
@@ -207,7 +248,7 @@ if (typeof io !== 'undefined') {
       if (emptyMsg) emptyMsg.remove();
       const div = document.createElement('div');
       div.className = 'message message-new' + (m.is_internal ? ' message-internal' : '');
-      div.innerHTML = '<div class="avatar avatar-sm" style="background-color: ' + m.avatar_color + '">' + m.full_name.charAt(0) + '</div><div class="message-body"><div class="message-header"><strong>' + m.full_name + '</strong><span class="message-role">' + (m.user_role || m.role || '') + '</span>' + (m.is_internal ? '<span class="internal-badge"><%= t.ticket_internal_badge %></span>' : '') + '<time><%= t.just_now %></time></div><div class="message-content">' + m.content + '</div></div>';
+      div.innerHTML = '<div class="avatar avatar-sm" style="background-color: ' + m.avatar_color + '">' + m.full_name.charAt(0) + '</div><div class="message-body"><div class="message-header"><strong>' + m.full_name + '</strong><span class="message-role">' + (m.user_role || m.role || '') + '</span>' + (m.is_internal ? '<span class="internal-badge"><%= t.ticket_internal_badge %></span>' : '') + '<time><%= t.just_now %></time></div><div class="message-content">' + linkifyContent(m.content) + '</div></div>';
       list.appendChild(div);
       div.scrollIntoView({ behavior: 'smooth' });
     }
@@ -239,7 +280,7 @@ async function aiSuggestReply() {
       autoResize(document.getElementById('messageInput'));
       document.getElementById('messageInput').focus();
     } else {
-      alert(data.error || 'AI not configured');
+      alert(data.error || 'Le service IA est indisponible.');
     }
   } catch (e) { alert('Error: ' + e.message); }
   btn.disabled = false;
@@ -247,6 +288,7 @@ async function aiSuggestReply() {
 }
 
 // ─── FAQ Quick Search ────────────────────────────────
+const currentLang = '<%= typeof lang !== "undefined" ? lang : "fr" %>';
 let faqTimeout = null;
 document.getElementById('faqSearch').addEventListener('input', (e) => {
   clearTimeout(faqTimeout);
@@ -254,31 +296,42 @@ document.getElementById('faqSearch').addEventListener('input', (e) => {
   if (q.length < 2) { document.getElementById('faqResults').innerHTML = ''; return; }
   faqTimeout = setTimeout(async () => {
     try {
-      const res = await fetch('/help/api/search?q=' + encodeURIComponent(q));
+      const res = await fetch('/help/api/search?q=' + encodeURIComponent(q) + '&lang=' + currentLang);
       const articles = await res.json();
       const container = document.getElementById('faqResults');
       if (articles.length === 0) {
         container.innerHTML = '<p class="text-muted text-sm"><%= t.help_no_results %></p>';
         return;
       }
-      container.innerHTML = articles.map(a =>
-        '<div class="faq-result-item">' +
-          '<div class="faq-result-title">' + (a.title) + (!a.is_public ? ' 🔒' : '') + '</div>' +
-          '<div class="faq-result-excerpt">' + (a.excerpt || '') + '</div>' +
+      container.innerHTML = articles.map(a => {
+        const title = a.displayTitle || a.title;
+        const articleUrl = a.company_slug ? '/help/c/' + a.company_slug + '/article/' + a.slug : '/help/article/' + a.slug;
+        return '<div class="faq-result-item">' +
+          '<div class="faq-result-title">' + escapeHtml(title) + (!a.is_public ? ' 🔒' : '') + '</div>' +
+          '<div class="faq-result-excerpt">' + escapeHtml(a.excerpt || '') + '</div>' +
           '<div class="faq-result-actions">' +
-            '<button class="btn btn-xs btn-ghost" onclick="insertFaqLink(\'' + a.slug + '\', \'' + a.title.replace(/'/g, "\\'") + '\')"><%= t.ticket_faq_insert %></button>' +
-            '<a href="/help/article/' + a.slug + '" target="_blank" class="btn btn-xs btn-ghost">👁️</a>' +
+            '<button class="btn btn-xs btn-ghost" onclick="insertFaqLink(\'' + a.slug + '\', \'' + escapeHtml(title).replace(/'/g, "\\'") + '\', \'' + (a.company_slug || '') + '\')"><%= t.ticket_faq_insert %></button>' +
+            '<a href="' + articleUrl + '" target="_blank" class="btn btn-xs btn-ghost">👁️</a>' +
           '</div>' +
-        '</div>'
-      ).join('');
+        '</div>';
+      }).join('');
     } catch (e) { console.error(e); }
   }, 300);
 });
 
-function insertFaqLink(slug, title) {
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function insertFaqLink(slug, title, companySlug) {
   const input = document.getElementById('messageInput');
-  const link = '<%= t.ticket_faq_ref_prefix %> "' + title + '": ' + window.location.origin + '/help/article/' + slug;
+  const prefix = '<%- t.ticket_faq_ref_prefix.replace(/\'/g, "\\\'") %>';
+  // Decode HTML entities from escapeHtml used in onclick
+  const cleanTitle = title.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&#x27;/g,"'");
+  const articlePath = companySlug ? '/help/c/' + companySlug + '/article/' + slug : '/help/article/' + slug;
+  const link = prefix + ' "' + cleanTitle + '":\n' + window.location.origin + articlePath;
   input.value = input.value ? input.value + '\n\n' + link : link;
+  autoResize(input);
   input.focus();
 }
 </script>

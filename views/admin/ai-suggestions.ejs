@@ -201,8 +201,9 @@ async function analyzePatterns() {
       alert(data.message);
     } else if (data.ok && data.jobId) {
       // Poll for result
+      let notFoundRetries = 0;
       const poll = async () => {
-        const r = await fetch('/admin/articles/ai/job/' + data.jobId);
+        const r = await fetch('/admin/articles/ai/job/' + data.jobId + '?t=' + Date.now());
         const job = await r.json();
         if (job.status === 'done') {
           if (job.result.saved > 0) {
@@ -212,7 +213,10 @@ async function analyzePatterns() {
           return;
         }
         if (job.status === 'error') { alert('❌ ' + (job.error || 'Erreur IA')); return; }
-        if (job.status === 'not_found') { alert('❌ Job introuvable'); return; }
+        if (job.status === 'not_found') {
+          notFoundRetries++;
+          if (notFoundRetries >= 5) { alert('❌ Job introuvable après 5 tentatives'); return; }
+        }
         setTimeout(poll, 2000);
       };
       poll();

@@ -4,7 +4,10 @@
 (function() {
   'use strict';
 
-  const STORAGE_KEY = 'ph_livechat_token';
+  // Detect company slug from URL (pattern: /help/c/:slug/)
+  const companySlugMatch = window.location.pathname.match(/\/help\/c\/([^\/]+)/);
+  const companySlug = companySlugMatch ? companySlugMatch[1] : null;
+  const STORAGE_KEY = 'ph_livechat_token' + (companySlug ? '_' + companySlug : '');
   let state = {
     open: false,
     token: localStorage.getItem(STORAGE_KEY) || null,
@@ -169,7 +172,7 @@
       const res = await fetch('/api/chat/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email })
+        body: JSON.stringify({ name, email, company_slug: companySlug })
       });
       const data = await res.json();
       if (data.ok) {

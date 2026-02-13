@@ -1,4 +1,3 @@
-<% var body = '' %>
 <!DOCTYPE html>
 <html lang="<%= t.lang %>">
 <head>
@@ -32,8 +31,8 @@
 
       <form method="POST" action="/login" class="login-form">
         <div class="form-group">
-          <label for="username"><%= t.login_username %></label>
-          <input type="text" id="username" name="username" required autofocus placeholder="<%= t.login_username_placeholder %>">
+          <label for="email"><%= t.login_email || 'Email' %></label>
+          <input type="email" id="email" name="email" required autofocus placeholder="<%= t.login_email_placeholder || 'votre@email.com' %>">
         </div>
         <div class="form-group">
           <label for="password"><%= t.login_password %></label>
@@ -45,32 +44,15 @@
         </button>
       </form>
 
-      <div class="login-demo">
-        <p><%= t.login_demo_title %></p>
-        <div class="demo-accounts">
-          <button onclick="fillLogin('admin','admin123')" class="demo-btn">
-            <span class="demo-role"><%= t.role_admin %></span>
-            <span class="demo-creds">admin / admin123</span>
-          </button>
-          <button onclick="fillLogin('dev1','dev123')" class="demo-btn">
-            <span class="demo-role"><%= t.role_developer_short %></span>
-            <span class="demo-creds">dev1 / dev123</span>
-          </button>
-          <button onclick="fillLogin('support1','support123')" class="demo-btn">
-            <span class="demo-role"><%= t.role_support %></span>
-            <span class="demo-creds">support1 / support123</span>
-          </button>
-        </div>
+      <div class="register-footer" style="text-align:center;margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--border);">
+        <p style="color:var(--text-muted);font-size:.9rem;">
+          <%= t.login_no_account || 'Pas encore de compte ?' %>
+          <a href="/register" style="color:var(--accent);font-weight:600;text-decoration:none;">
+            <%= t.login_register_link || 'Créer un compte gratuit' %>
+          </a>
+        </p>
       </div>
     </div>
   </div>
-
-  <script>
-    function fillLogin(user, pass) {
-      document.getElementById('username').value = user;
-      document.getElementById('password').value = pass;
-      document.querySelector('.login-form').submit();
-    }
-  </script>
 </body>
 </html>

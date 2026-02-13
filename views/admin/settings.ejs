@@ -3,7 +3,7 @@
 <div class="content-header">
   <div>
     <h1>⚙️ Paramètres</h1>
-    <p class="text-muted">Configuration IA, traductions et optimisation des coûts</p>
+    <p class="text-muted">Apparence, IA, traductions et configuration</p>
   </div>
 </div>
 
@@ -12,6 +12,51 @@
 <% } %>
 
 <div class="settings-grid">
+
+  <!-- ═══ Branding & Apparence ═══ -->
+  <div class="card">
+    <div class="card-header"><h2>🎨 Apparence & Marque</h2></div>
+    <div class="card-body">
+      <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:1rem">Personnalisez l'apparence de votre espace : logo, couleurs et domaine personnalisé.</p>
+
+      <div style="display:flex;gap:2rem;flex-wrap:wrap">
+        <!-- Logo -->
+        <div style="flex:1;min-width:200px">
+          <label style="font-weight:600;font-size:.85rem;display:block;margin-bottom:.5rem">Logo de votre entreprise</label>
+          <div id="logoPreviewArea" style="width:80px;height:80px;border-radius:12px;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;margin-bottom:.5rem;transition:all .2s" onclick="document.getElementById('logoFile').click()">
+            <% if (typeof tenant !== 'undefined' && tenant && tenant.logo_url) { %>
+              <img src="<%= tenant.logo_url %>" style="width:100%;height:100%;object-fit:contain" id="logoPreviewImg">
+            <% } else { %>
+              <span style="font-size:2rem;color:var(--text-muted)" id="logoPlaceholder">📷</span>
+              <img src="" style="width:100%;height:100%;object-fit:contain;display:none" id="logoPreviewImg">
+            <% } %>
+          </div>
+          <input type="file" id="logoFile" accept="image/*" style="display:none" onchange="uploadLogo(this)">
+          <p style="font-size:.7rem;color:var(--text-muted);margin:0">PNG ou JPG, max 512 Ko</p>
+          <% if (typeof tenant !== 'undefined' && tenant && tenant.logo_url) { %>
+            <button class="btn btn-sm" style="margin-top:.4rem;font-size:.75rem;padding:.2rem .5rem" onclick="removeLogo()">Supprimer le logo</button>
+          <% } %>
+        </div>
+
+        <!-- Colors -->
+        <div style="flex:2;min-width:250px">
+          <label style="font-weight:600;font-size:.85rem;display:block;margin-bottom:.5rem">Couleur principale</label>
+          <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1rem">
+            <input type="color" id="brandColor" value="<%= (typeof tenant !== 'undefined' && tenant && tenant.brand_color) ? tenant.brand_color : '#6366f1' %>" style="width:50px;height:36px;border:none;border-radius:8px;cursor:pointer;padding:0">
+            <input type="text" id="brandColorText" value="<%= (typeof tenant !== 'undefined' && tenant && tenant.brand_color) ? tenant.brand_color : '#6366f1' %>" style="width:100px;font-family:monospace;font-size:.8rem" onchange="document.getElementById('brandColor').value=this.value" placeholder="#6366f1">
+            <div id="colorPreviewDot" style="width:32px;height:32px;border-radius:8px;background:<%= (typeof tenant !== 'undefined' && tenant && tenant.brand_color) ? tenant.brand_color : '#6366f1' %>"></div>
+            <button class="btn btn-sm" style="font-size:.75rem;padding:.2rem .5rem" onclick="document.getElementById('brandColor').value='#6366f1';document.getElementById('brandColorText').value='#6366f1';document.getElementById('colorPreviewDot').style.background='#6366f1'">Réinitialiser</button>
+          </div>
+
+          <label style="font-weight:600;font-size:.85rem;display:block;margin-bottom:.5rem">Domaine personnalisé (optionnel)</label>
+          <input type="text" id="customDomain" value="<%= (typeof tenant !== 'undefined' && tenant && tenant.custom_domain) ? tenant.custom_domain : '' %>" placeholder="support.votre-domaine.com" style="width:100%;max-width:350px">
+          <p style="font-size:.7rem;color:var(--text-muted);margin:.25rem 0 0">Configurez un CNAME vers <code>votre-instance.render.com</code> puis renseignez ici.</p>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" onclick="saveBranding()" style="margin-top:1rem" id="saveBrandingBtn">💾 Sauvegarder l'apparence</button>
+    </div>
+  </div>
 
   <!-- ═══ Translation Settings ═══ -->
   <div class="card">
@@ -67,6 +112,52 @@
           <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0">Description courte de l'entreprise et de ses services. L'IA utilisera ce contexte pour répondre de manière plus pertinente aux visiteurs.</p>
         </div>
 
+        <hr style="margin:1.5rem 0;border-color:var(--border)">
+        <h3 style="margin-bottom:0.75rem">🔺 Escalade vers les développeurs</h3>
+
+        <div class="form-group">
+          <label class="toggle-label">
+            <input type="checkbox" name="escalation_enabled" value="1"
+              <%= settings.escalation_enabled === '1' ? 'checked' : '' %>>
+            <span><strong>Activer l'escalade de tickets</strong></span>
+          </label>
+          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0">Permet aux agents support d'escalader des tickets vers l'équipe développement en créant une tâche dans un projet.</p>
+        </div>
+
+        <div class="form-group" id="escalationCategoriesGroup" style="<%= settings.escalation_enabled !== '1' ? 'opacity:.5;pointer-events:none' : '' %>">
+          <label><strong>Catégories éligibles à l'escalade</strong></label>
+          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0.5rem">Seuls les tickets de ces catégories pourront être escaladés.</p>
+          <div class="checkbox-grid">
+            <%
+              const escCats = [
+                { id: 'bug', label: '🐛 Bug', labelEn: '🐛 Bug' },
+                { id: 'feature_request', label: '💡 Demande de fonctionnalité', labelEn: '💡 Feature Request' },
+                { id: 'question', label: '❓ Question technique', labelEn: '❓ Technical Question' },
+                { id: 'account', label: '👤 Compte', labelEn: '👤 Account' },
+                { id: 'billing', label: '💳 Facturation', labelEn: '💳 Billing' },
+                { id: 'general', label: '📋 Général', labelEn: '📋 General' },
+                { id: 'other', label: '📦 Autre', labelEn: '📦 Other' }
+              ];
+              const activeEscCats = (settings.escalation_categories || '').split(',');
+            %>
+            <% escCats.forEach(cat => { %>
+              <label class="checkbox-item">
+                <input type="checkbox" name="escalation_categories" value="<%= cat.id %>"
+                  <%= activeEscCats.includes(cat.id) ? 'checked' : '' %>>
+                <span><%= cat.label %></span>
+              </label>
+            <% }) %>
+          </div>
+        </div>
+
+        <script>
+          document.querySelector('input[name="escalation_enabled"]')?.addEventListener('change', function() {
+            const group = document.getElementById('escalationCategoriesGroup');
+            if (this.checked) { group.style.opacity = '1'; group.style.pointerEvents = 'auto'; }
+            else { group.style.opacity = '.5'; group.style.pointerEvents = 'none'; }
+          });
+        </script>
+
         <div style="margin-top:1.5rem;display:flex;gap:0.5rem;flex-wrap:wrap">
           <button type="submit" class="btn btn-primary">💾 Sauvegarder</button>
         </div>
@@ -88,62 +179,85 @@
           <p class="ai-progress-text" id="transText">Traduction en cours...</p>
         </div>
       <% } else { %>
-        <p class="text-muted">⚠️ Configurez ANTHROPIC_API_KEY pour activer la traduction IA.</p>
+        <p class="text-muted">ℹ️ <%= t.settings_ai_unavailable || 'Le service de traduction IA n\'est pas activé pour votre espace. Contactez-nous pour l\'activer.' %></p>
       <% } %>
     </div>
   </div>
 
-  <!-- ═══ AI Usage Dashboard ═══ -->
+  <!-- ═══ AI Profile Configuration ═══ -->
   <div class="card">
-    <div class="card-header"><h2>📊 Consommation IA (30 derniers jours)</h2></div>
+    <div class="card-header"><h2>🤖 <%= t.settings_ai_profile_title || 'Profil IA de votre entreprise' %></h2></div>
     <div class="card-body">
-      <div class="stats-mini-grid">
-        <div class="stat-mini">
-          <div class="stat-mini-value"><%= aiUsage30d.calls %></div>
-          <div class="stat-mini-label">Appels API</div>
-        </div>
-        <div class="stat-mini">
-          <div class="stat-mini-value"><%= (aiUsage30d.tokens / 1000).toFixed(1) %>K</div>
-          <div class="stat-mini-label">Tokens</div>
-        </div>
-        <div class="stat-mini">
-          <div class="stat-mini-value">$<%= aiUsage30d.cost.toFixed(3) %></div>
-          <div class="stat-mini-label">Coût estimé</div>
-        </div>
+      <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:1rem"><%= t.settings_ai_profile_desc || 'Le profil IA personnalise le ton, le vocabulaire et les garde-fous de toutes les réponses automatiques (livechat, suggestions tickets, FAQ).' %></p>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.6rem;margin-bottom:1.5rem" id="settingsProfileGrid">
+        <% const profiles = ['finance','legal','saas','ecommerce','education','health','realestate','services','restaurant','generic'];
+           const pIcons = {'finance':'🏦','legal':'⚖️','saas':'💻','ecommerce':'🛍️','education':'🎓','health':'🏥','realestate':'🏠','services':'🏗️','restaurant':'🍽️','generic':'🏢'};
+           const pNames = {'finance':'Finance & Banque','legal':'Juridique & Avocats','saas':'SaaS & Tech','ecommerce':'E-commerce','education':'Éducation','health':'Santé & Médical','realestate':'Immobilier','services':'Services & Conseil','restaurant':'Restauration & Hôtel','generic':'Généraliste'};
+           profiles.forEach(p => { %>
+          <label class="ob-profile-card <%= (tenant && tenant.ai_profile === p) ? 'selected' : '' %>" onclick="settingsSelectProfile(this,'<%= p %>')" style="padding:.75rem .5rem;cursor:pointer;border:2px solid var(--border);border-radius:10px;text-align:center;transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:.2rem">
+            <input type="radio" name="settings_ai_profile" value="<%= p %>" <%= (tenant && tenant.ai_profile === p) ? 'checked' : '' %> style="display:none">
+            <span style="font-size:1.3rem"><%= pIcons[p] %></span>
+            <span style="font-size:.75rem;font-weight:700;color:var(--text-primary)"><%= pNames[p] %></span>
+          </label>
+        <% }) %>
       </div>
 
-      <h3 style="margin:1.5rem 0 0.75rem">Détail par jour</h3>
-      <% if (aiUsageByDay.length > 0) { %>
-        <table class="table table-sm">
-          <thead><tr><th>Date</th><th>Appels</th><th>Tokens</th><th>Coût</th></tr></thead>
-          <tbody>
-            <% aiUsageByDay.forEach(d => { %>
-              <tr>
-                <td><%= d.day %></td>
-                <td><%= d.calls %></td>
-                <td><%= (d.tokens / 1000).toFixed(1) %>K</td>
-                <td>$<%= d.cost.toFixed(4) %></td>
-              </tr>
-            <% }) %>
-          </tbody>
-        </table>
-      <% } else { %>
-        <p class="text-muted">Aucune donnée de consommation encore enregistrée.</p>
-      <% } %>
+      <div class="form-group">
+        <label><%= t.settings_custom_ai_context || 'Contexte personnalisé (optionnel)' %></label>
+        <textarea id="settings_custom_ai_context" rows="4" style="width:100%;resize:vertical" placeholder="<%= t.settings_custom_ai_context_placeholder || 'Décrivez votre activité, produits, règles spécifiques...' %>"><%= (tenant && tenant.custom_ai_context) ? tenant.custom_ai_context : '' %></textarea>
+        <p style="font-size:.75rem;color:var(--text-muted);margin:.4rem 0 0"><%= t.settings_custom_ai_context_help || 'Ce texte est injecté dans chaque réponse IA, en plus du profil sectoriel. Idéal pour vos produits, tarifs, horaires, etc.' %></p>
+      </div>
 
-      <h3 style="margin:1.5rem 0 0.75rem">💡 Où l'IA est utilisée</h3>
-      <table class="table table-sm">
-        <thead><tr><th>Action</th><th>Déclencheur</th><th>Coût/appel</th><th>Optimisation</th></tr></thead>
-        <tbody>
-          <tr><td>💬 Livechat IA</td><td>Chaque message visiteur</td><td>~$0.003</td><td class="text-success">✅ FAQ-first activé</td></tr>
-          <tr><td>🎫 Suggestion ticket</td><td>Clic staff</td><td>~$0.005</td><td>Manuel uniquement</td></tr>
-          <tr><td>📝 Génération articles</td><td>Admin manuelle</td><td>~$0.02/batch</td><td>Usage rare</td></tr>
-          <tr><td>🌐 Traduction</td><td>Publication ou manuelle</td><td>~$0.003/article</td><td>Une seule fois/article</td></tr>
-          <tr><td>🔍 Analyse patterns</td><td>Manuelle ou /50 msgs</td><td>~$0.005</td><td>Usage rare</td></tr>
-        </tbody>
-      </table>
+      <button class="btn btn-primary" onclick="saveAiProfile()" id="saveProfileBtn">
+        💾 <%= t.save || 'Enregistrer' %>
+      </button>
+      <span id="profileSaveStatus" style="margin-left:.75rem;font-size:.85rem;color:var(--success);display:none">✅ <%= t.saved || 'Enregistré' %></span>
     </div>
   </div>
+
+  <script>
+    function settingsSelectProfile(el, profileId) {
+      document.querySelectorAll('#settingsProfileGrid label').forEach(c => {
+        c.classList.remove('selected');
+        c.style.borderColor = 'var(--border)';
+        c.style.background = 'transparent';
+      });
+      el.classList.add('selected');
+      el.style.borderColor = 'var(--accent)';
+      el.style.background = 'rgba(99,102,241,.1)';
+      el.querySelector('input').checked = true;
+    }
+
+    async function saveAiProfile() {
+      const btn = document.getElementById('saveProfileBtn');
+      const status = document.getElementById('profileSaveStatus');
+      btn.disabled = true;
+      btn.textContent = '<%= t.loading || "..." %>';
+
+      const profile = document.querySelector('input[name="settings_ai_profile"]:checked');
+      const ctx = document.getElementById('settings_custom_ai_context').value;
+
+      const res = await fetch('/admin/settings/ai-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ai_profile: profile ? profile.value : 'generic',
+          custom_ai_context: ctx
+        })
+      });
+
+      btn.disabled = false;
+      btn.innerHTML = '💾 <%= t.save || "Enregistrer" %>';
+
+      if (res.ok) {
+        status.style.display = 'inline';
+        setTimeout(() => { status.style.display = 'none'; }, 3000);
+      }
+    }
+  </script>
+
+  <!-- AI Profile config ends here -->
 
 </div>
 
@@ -174,7 +288,7 @@ async function bulkTranslate() {
         polls++;
         fill.style.width = Math.min(10 + polls * 8, 90) + '%';
         text.textContent = 'Traduction en cours... (' + polls * 2 + 's)';
-        const r = await fetch('/admin/articles/ai/job/' + data.jobId);
+        const r = await fetch('/admin/articles/ai/job/' + data.jobId + '?t=' + Date.now());
         const job = await r.json();
         if (job.status === 'done') {
           fill.style.width = '100%';
@@ -193,6 +307,61 @@ async function bulkTranslate() {
   btn.querySelector('.btn-text').style.display = 'inline';
   btn.querySelector('.btn-loading').style.display = 'none';
   btn.disabled = false;
+}
+
+// ─── Branding ───
+document.getElementById('brandColor')?.addEventListener('input', function() {
+  document.getElementById('brandColorText').value = this.value;
+  document.getElementById('colorPreviewDot').style.background = this.value;
+});
+
+async function uploadLogo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 512 * 1024) { alert('Le fichier est trop volumineux (max 512 Ko)'); return; }
+  if (!file.type.startsWith('image/')) { alert('Seules les images sont acceptées'); return; }
+
+  const formData = new FormData();
+  formData.append('logo', file);
+
+  try {
+    const res = await fetch('/admin/settings/logo', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.ok) {
+      const img = document.getElementById('logoPreviewImg');
+      const ph = document.getElementById('logoPlaceholder');
+      img.src = data.url + '?t=' + Date.now();
+      img.style.display = 'block';
+      if (ph) ph.style.display = 'none';
+    } else { alert('Erreur: ' + (data.error || 'Upload échoué')); }
+  } catch (e) { alert('Erreur: ' + e.message); }
+}
+
+async function removeLogo() {
+  if (!confirm('Supprimer le logo ?')) return;
+  try {
+    const res = await fetch('/admin/settings/logo', { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) location.reload();
+  } catch (e) { alert('Erreur: ' + e.message); }
+}
+
+async function saveBranding() {
+  const btn = document.getElementById('saveBrandingBtn');
+  btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
+  try {
+    const res = await fetch('/admin/settings/branding', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        brand_color: document.getElementById('brandColor').value,
+        custom_domain: document.getElementById('customDomain').value
+      })
+    });
+    const data = await res.json();
+    if (data.ok) { location.reload(); } else { alert('Erreur: ' + (data.error || 'Erreur')); }
+  } catch (e) { alert('Erreur: ' + e.message); }
+  btn.disabled = false; btn.textContent = '💾 Sauvegarder l\'apparence';
 }
 </script>
 

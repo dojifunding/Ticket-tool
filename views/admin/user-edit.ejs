@@ -1,0 +1,110 @@
+<%- include('../partials/head') %>
+
+<div class="page-header">
+  <div>
+    <a href="/admin/users" class="back-link">← Retour aux utilisateurs</a>
+    <h1 class="page-title">Modifier l'utilisateur</h1>
+    <p class="page-subtitle"><%= editUser.full_name %> — @<%= editUser.username %></p>
+  </div>
+</div>
+
+<div class="detail-layout" style="max-width:800px">
+  <div class="detail-main">
+    <div class="card">
+      <div class="card-header"><h2>👤 Informations</h2></div>
+      <div class="card-body">
+        <form method="POST" action="/admin/users/<%= editUser.id %>/edit">
+          <div class="form-group">
+            <label><strong>Nom complet</strong></label>
+            <input type="text" name="full_name" value="<%= editUser.full_name %>" required>
+          </div>
+
+          <div class="form-group">
+            <label><strong>Email</strong></label>
+            <input type="email" value="<%= editUser.email %>" disabled class="input-disabled">
+            <p class="text-muted" style="font-size:.8rem;margin:.25rem 0 0">L'email ne peut pas être modifié (identifiant de connexion).</p>
+          </div>
+
+          <div class="form-group">
+            <label><strong>Rôle</strong></label>
+            <select name="role">
+              <option value="support" <%= editUser.role === 'support' ? 'selected' : '' %>>🎧 Support</option>
+              <option value="developer" <%= editUser.role === 'developer' ? 'selected' : '' %>>💻 Développeur</option>
+              <option value="admin" <%= editUser.role === 'admin' ? 'selected' : '' %>>👑 Administrateur</option>
+            </select>
+          </div>
+
+          <hr style="margin:1.25rem 0;border-color:var(--border)">
+
+          <div class="form-group">
+            <label><strong>🔑 Nouveau mot de passe</strong></label>
+            <input type="password" name="new_password" minlength="4" placeholder="Laisser vide pour ne pas modifier">
+            <p class="text-muted" style="font-size:.8rem;margin:.25rem 0 0">Minimum 4 caractères. Laissez vide pour conserver le mot de passe actuel.</p>
+          </div>
+
+          <% if (companies.length > 0) { %>
+            <hr style="margin:1.25rem 0;border-color:var(--border)">
+            <div class="form-group">
+              <label><strong>🏢 Entreprises assignées</strong></label>
+              <p class="text-muted" style="font-size:.8rem;margin:.25rem 0 .5rem">Cet utilisateur pourra voir et gérer les tickets de ces entreprises.</p>
+              <div class="checkbox-grid">
+                <% companies.forEach(c => { %>
+                  <label class="checkbox-item">
+                    <input type="checkbox" name="company_ids" value="<%= c.id %>"
+                      <%= userCompanyIds.includes(c.id) ? 'checked' : '' %>>
+                    <span><%= c.name %></span>
+                  </label>
+                <% }) %>
+              </div>
+            </div>
+          <% } %>
+
+          <div style="margin-top:1.5rem;display:flex;gap:.5rem">
+            <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+            <a href="/admin/users" class="btn btn-ghost">Annuler</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1rem">
+      <div class="card-header"><h2>📊 Statistiques</h2></div>
+      <div class="card-body">
+        <div class="stats-mini-grid">
+          <div class="stat-mini">
+            <div class="stat-mini-label">Nom d'utilisateur</div>
+            <div class="stat-mini-value">@<%= editUser.username %></div>
+          </div>
+          <div class="stat-mini">
+            <div class="stat-mini-label">Créé le</div>
+            <div class="stat-mini-value"><%= new Date(editUser.created_at).toLocaleDateString('fr-FR') %></div>
+          </div>
+          <div class="stat-mini">
+            <div class="stat-mini-label">Dernière activité</div>
+            <div class="stat-mini-value"><%= editUser.last_seen ? new Date(editUser.last_seen).toLocaleDateString('fr-FR') : 'Jamais' %></div>
+          </div>
+          <div class="stat-mini">
+            <div class="stat-mini-label">Statut</div>
+            <div class="stat-mini-value" style="color:<%= editUser.is_active ? 'var(--success)' : 'var(--danger)' %>">
+              <%= editUser.is_active ? '✅ Actif' : '❌ Désactivé' %>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .input-disabled { opacity: .6; cursor: not-allowed; }
+  .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: .4rem; }
+  .checkbox-item { display: flex; align-items: center; gap: .4rem; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; font-size: .85rem; transition: background .15s; }
+  .checkbox-item:hover { background: var(--bg-secondary); }
+  .checkbox-item input[type="checkbox"] { margin: 0; }
+  .stats-mini-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .75rem; }
+  .stat-mini { padding: .75rem; background: var(--bg-secondary); border-radius: var(--radius); border: 1px solid var(--border); }
+  .stat-mini-label { font-size: .75rem; color: var(--text-muted); margin-bottom: .25rem; }
+  .stat-mini-value { font-size: .9rem; font-weight: 600; }
+</style>
+
+<%- include('../partials/foot') %>

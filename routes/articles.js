@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { getDb, logActivity, getSetting } = require('../database');
+const { getDb, logActivity, getSetting, requestStore, getTenantDb } = require('../database');
 const { isAuthenticated } = require('../middleware/auth');
 const ai = require('../ai');
 const crypto = require('crypto');
@@ -9,12 +9,18 @@ router.use(isAuthenticated);
 // ─── Async AI Job Queue (avoids Render 30s HTTP timeout) ───
 const aiJobs = new Map(); // jobId → { status, result, error, created }
 
-function createJob(fn) {
+function createJob(fn, tenantId) {
   const jobId = crypto.randomBytes(8).toString('hex');
   aiJobs.set(jobId, { status: 'processing', result: null, error: null, created: Date.now() });
+  console.log('[AI Job] Created:', jobId, '— tenant:', tenantId || 'unknown', '— active jobs:', aiJobs.size);
 
-  // Run in background (no await!)
-  fn().then(result => {
+  // Capture tenant DB now (while ALS context still active)
+  const db = tenantId ? getTenantDb(tenantId) : getDb();
+
+  // Run in background — re-wrap in ALS so getDb() works inside AI calls
+  const wrappedFn = () => requestStore.run({ db, tenantId }, fn);
+
+  wrappedFn().then(result => {
     aiJobs.set(jobId, { status: 'done', result, error: null, created: Date.now() });
   }).catch(err => {
     console.error('[AI Job] Error:', err.message);
@@ -28,8 +34,14 @@ function createJob(fn) {
 
 // Poll endpoint
 router.get('/ai/job/:jobId', (req, res) => {
-  const job = aiJobs.get(req.params.jobId);
-  if (!job) return res.json({ status: 'not_found' });
+  const jobId = (req.params.jobId || '').trim();
+  const job = aiJobs.get(jobId);
+  if (!job) {
+    console.log('[AI Job] Poll not_found:', jobId, '— active jobs:', [...aiJobs.keys()].join(', ') || 'none');
+    return res.json({ status: 'not_found' });
+  }
+  // Prevent caching
+  res.set('Cache-Control', 'no-store');
   res.json(job);
 });
 
@@ -49,38 +61,59 @@ function slugify(text) {
 // ─── Articles List ───────────────────────────────────
 router.get('/', (req, res) => {
   const db = getDb();
-  const articles = db.prepare(`
+  const companyId = req.query.company ? parseInt(req.query.company) : null;
+
+  let articlesSQL = `
     SELECT a.*, c.name as category_name, c.icon as category_icon,
-      u.full_name as author_name
+      u.full_name as author_name, co.name as company_name, co.slug as company_slug
     FROM articles a
     LEFT JOIN article_categories c ON a.category_id = c.id
     LEFT JOIN users u ON a.author_id = u.id
-    ORDER BY a.updated_at DESC
-  `).all();
+    LEFT JOIN companies co ON a.company_id = co.id
+  `;
+  if (companyId) articlesSQL += ' WHERE a.company_id = ' + companyId;
+  articlesSQL += ' ORDER BY a.updated_at DESC';
+  const articles = db.prepare(articlesSQL).all();
 
-  const categories = db.prepare('SELECT * FROM article_categories ORDER BY position ASC').all();
+  let catSQL = 'SELECT * FROM article_categories';
+  if (companyId) catSQL += ' WHERE company_id = ' + companyId;
+  catSQL += ' ORDER BY position ASC';
+  const categories = db.prepare(catSQL).all();
 
-  // KB entries for "From KB" tab
-  const kbEntries = db.prepare('SELECT id, title, content FROM knowledge_base WHERE is_active=1').all();
+  let kbSQL = 'SELECT id, title, content FROM knowledge_base WHERE is_active=1';
+  if (companyId) kbSQL += ' AND company_id = ' + companyId;
+  const kbEntries = db.prepare(kbSQL).all();
 
-  // Pending AI suggestions count
   let pendingSuggestions = 0;
-  try { pendingSuggestions = db.prepare('SELECT COUNT(*) as c FROM ai_article_suggestions WHERE status="pending"').get().c; } catch {}
+  try {
+    let sugSQL = 'SELECT COUNT(*) as c FROM ai_article_suggestions WHERE status="pending"';
+    if (companyId) sugSQL += ' AND company_id = ' + companyId;
+    pendingSuggestions = db.prepare(sugSQL).get().c;
+  } catch {}
+
+  const companies = db.prepare('SELECT id, name FROM companies WHERE is_active = 1 ORDER BY name').all();
+  const selectedCompany = companyId ? db.prepare('SELECT * FROM companies WHERE id = ?').get(companyId) : null;
 
   res.render('admin/articles', {
-    articles, categories, kbEntries, pendingSuggestions,
-    aiConfigured: ai.isConfigured(),
-    title: res.locals.t.articles_title
+    articles, categories, kbEntries, pendingSuggestions, companies,
+    selectedCompany, companyId,
+    aiConfigured: ai.isAvailableForTenant(res.locals.tenant),
+    title: selectedCompany ? selectedCompany.name + ' — Articles' : res.locals.t.articles_title
   });
 });
 
 // ─── New Article Form ────────────────────────────────
 router.get('/new', (req, res) => {
   const db = getDb();
-  const categories = db.prepare('SELECT * FROM article_categories ORDER BY position ASC').all();
+  const companyId = req.query.company ? parseInt(req.query.company) : null;
+  let catSQL = 'SELECT * FROM article_categories';
+  if (companyId) catSQL += ' WHERE company_id = ' + companyId;
+  catSQL += ' ORDER BY position ASC';
+  const categories = db.prepare(catSQL).all();
+  const companies = db.prepare('SELECT id, name FROM companies WHERE is_active = 1 ORDER BY name').all();
   res.render('admin/article-form', {
-    article: null, categories,
-    aiConfigured: ai.isConfigured(),
+    article: null, categories, companies, companyId,
+    aiConfigured: ai.isAvailableForTenant(res.locals.tenant),
     title: res.locals.t.articles_new
   });
 });
@@ -88,7 +121,7 @@ router.get('/new', (req, res) => {
 // ─── Create Article ──────────────────────────────────
 router.post('/new', (req, res) => {
   const db = getDb();
-  const { title, title_en, content, content_en, excerpt, excerpt_en, category_id, is_public, is_published } = req.body;
+  const { title, title_en, content, content_en, excerpt, excerpt_en, category_id, is_public, is_published, company_id } = req.body;
   const user = req.session.user;
   let slug = slugify(title);
 
@@ -97,13 +130,95 @@ router.post('/new', (req, res) => {
   if (existing) slug = slug + '-' + Date.now().toString(36);
 
   db.prepare(`
-    INSERT INTO articles (title, slug, title_en, content, content_en, excerpt, excerpt_en, category_id, is_public, is_published, author_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO articles (title, slug, title_en, content, content_en, excerpt, excerpt_en, category_id, company_id, is_public, is_published, author_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(title, slug, title_en || null, content, content_en || null, excerpt || null, excerpt_en || null,
-    category_id || null, is_public ? 1 : 0, is_published ? 1 : 0, user.id);
+    category_id || null, company_id || null, is_public ? 1 : 0, is_published ? 1 : 0, user.id);
 
   logActivity(user.id, 'created', 'article', 0, title);
-  res.redirect('/admin/articles');
+  res.redirect('/admin/articles' + (company_id ? '?company=' + company_id : ''));
+});
+
+// ═══════════════════════════════════════════════════════
+//  BULK CATEGORY CHANGE (must be before /:id routes)
+// ═══════════════════════════════════════════════════════
+router.post('/bulk-category', (req, res) => {
+  const db = getDb();
+  const { article_ids, category_id } = req.body;
+  if (!article_ids || !category_id) return res.status(400).json({ error: 'Missing data' });
+
+  const ids = Array.isArray(article_ids) ? article_ids : [article_ids];
+  const catId = parseInt(category_id);
+  const cat = db.prepare('SELECT id FROM article_categories WHERE id = ?').get(catId);
+  if (!cat) return res.status(404).json({ error: 'Category not found' });
+
+  const stmt = db.prepare('UPDATE articles SET category_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+  let count = 0;
+  for (const id of ids) {
+    stmt.run(catId, parseInt(id));
+    count++;
+  }
+  console.log('[Articles] Bulk category change:', count, 'articles → category', catId);
+  res.json({ ok: true, count });
+});
+
+// ═══════════════════════════════════════════════════════
+//  CATEGORY CRUD (must be before /:id routes)
+// ═══════════════════════════════════════════════════════
+router.get('/categories', (req, res) => {
+  const db = getDb();
+  const companyId = req.query.company ? parseInt(req.query.company) : null;
+
+  let sql = `SELECT c.*, co.name as company_name, 
+    (SELECT COUNT(*) FROM articles WHERE category_id = c.id) as article_count
+    FROM article_categories c LEFT JOIN companies co ON c.company_id = co.id`;
+  if (companyId) sql += ' WHERE c.company_id = ' + companyId;
+  sql += ' ORDER BY c.position ASC, c.name ASC';
+  const categories = db.prepare(sql).all();
+
+  const companies = db.prepare('SELECT id, name FROM companies WHERE is_active = 1 ORDER BY name').all();
+
+  res.render('admin/categories', {
+    categories, companies, companyId,
+    title: res.locals.t.categories_title || 'Catégories'
+  });
+});
+
+router.post('/categories', (req, res) => {
+  const db = getDb();
+  const { name, name_en, slug, icon, company_id, position } = req.body;
+  if (!name) return res.redirect('/admin/articles/categories?error=name');
+
+  const catSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const maxPos = db.prepare('SELECT MAX(position) as m FROM article_categories').get();
+  const pos = position ? parseInt(position) : ((maxPos?.m || 0) + 1);
+
+  db.prepare('INSERT INTO article_categories (name, name_en, slug, icon, company_id, position) VALUES (?,?,?,?,?,?)')
+    .run(name, name_en || null, catSlug, icon || '📁', company_id ? parseInt(company_id) : null, pos);
+
+  res.redirect('/admin/articles/categories' + (company_id ? '?company=' + company_id : ''));
+});
+
+router.post('/categories/:id/update', (req, res) => {
+  const db = getDb();
+  const { name, name_en, slug, icon, position } = req.body;
+  if (!name) return res.redirect('/admin/articles/categories');
+
+  db.prepare('UPDATE article_categories SET name=?, name_en=?, slug=?, icon=?, position=? WHERE id=?')
+    .run(name, name_en || null, slug || null, icon || '📁', position ? parseInt(position) : 0, req.params.id);
+
+  res.redirect('/admin/articles/categories');
+});
+
+router.post('/categories/:id/delete', (req, res) => {
+  const db = getDb();
+  const id = parseInt(req.params.id);
+
+  // Move articles to uncategorized (null)
+  db.prepare('UPDATE articles SET category_id = NULL WHERE category_id = ?').run(id);
+  db.prepare('DELETE FROM article_categories WHERE id = ?').run(id);
+
+  res.redirect('/admin/articles/categories');
 });
 
 // ─── Edit Article Form ───────────────────────────────
@@ -112,10 +227,14 @@ router.get('/:id/edit', (req, res) => {
   const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(req.params.id);
   if (!article) return res.redirect('/admin/articles');
 
-  const categories = db.prepare('SELECT * FROM article_categories ORDER BY position ASC').all();
+  let catSQL = 'SELECT * FROM article_categories';
+  if (article.company_id) catSQL += ' WHERE company_id = ' + article.company_id;
+  catSQL += ' ORDER BY position ASC';
+  const categories = db.prepare(catSQL).all();
+  const companies = db.prepare('SELECT id, name FROM companies WHERE is_active = 1 ORDER BY name').all();
   res.render('admin/article-form', {
-    article, categories,
-    aiConfigured: ai.isConfigured(),
+    article, categories, companies, companyId: article.company_id,
+    aiConfigured: ai.isAvailableForTenant(res.locals.tenant),
     title: article.title
   });
 });
@@ -123,16 +242,16 @@ router.get('/:id/edit', (req, res) => {
 // ─── Update Article ──────────────────────────────────
 router.post('/:id/update', (req, res) => {
   const db = getDb();
-  const { title, title_en, content, content_en, excerpt, excerpt_en, category_id, is_public, is_published } = req.body;
+  const { title, title_en, content, content_en, excerpt, excerpt_en, category_id, is_public, is_published, company_id } = req.body;
 
   db.prepare(`
     UPDATE articles SET title=?, title_en=?, content=?, content_en=?, excerpt=?, excerpt_en=?,
-      category_id=?, is_public=?, is_published=?, updated_at=CURRENT_TIMESTAMP
+      category_id=?, company_id=?, is_public=?, is_published=?, updated_at=CURRENT_TIMESTAMP
     WHERE id=?
   `).run(title, title_en || null, content, content_en || null, excerpt || null, excerpt_en || null,
-    category_id || null, is_public ? 1 : 0, is_published ? 1 : 0, req.params.id);
+    category_id || null, company_id || null, is_public ? 1 : 0, is_published ? 1 : 0, req.params.id);
 
-  res.redirect('/admin/articles');
+  res.redirect('/admin/articles' + (company_id ? '?company=' + company_id : ''));
 });
 
 // ─── Delete Article ──────────────────────────────────
@@ -156,8 +275,9 @@ router.post('/:id/toggle-publish', (req, res) => {
 // ─── Bulk Publish AI-Generated Articles ──────────────
 router.post('/ai/bulk-publish', (req, res) => {
   const db = getDb();
-  const { articles } = req.body;
+  const { articles, company_id } = req.body;
   if (!articles || !Array.isArray(articles)) return res.status(400).json({ error: 'Invalid data' });
+  const cid = company_id ? parseInt(company_id) : null;
 
   const publishedIds = [];
   for (const a of articles) {
@@ -167,9 +287,9 @@ router.post('/ai/bulk-publish', (req, res) => {
     const existing = db.prepare('SELECT id FROM articles WHERE slug=?').get(slug);
     const finalSlug = existing ? slug + '-' + Date.now().toString(36) : slug;
 
-    const result = db.prepare(`INSERT INTO articles (title, slug, excerpt, content, category_id, is_published, is_public, author_id)
-      VALUES (?, ?, ?, ?, ?, 1, 1, ?)`).run(
-      a.title, finalSlug, a.excerpt || '', a.content, a.category_id || null, req.session.user.id
+    const result = db.prepare(`INSERT INTO articles (title, slug, excerpt, content, category_id, company_id, is_published, is_public, author_id)
+      VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)`).run(
+      a.title, finalSlug, a.excerpt || '', a.content, a.category_id || null, cid, req.session.user.id
     );
     publishedIds.push(result.lastInsertRowid);
   }
@@ -177,16 +297,22 @@ router.post('/ai/bulk-publish', (req, res) => {
   // Auto-translate in background if enabled
   const autoTranslate = getSetting('auto_translate_articles', '0') === '1';
   const transLangs = getSetting('translation_languages', 'en').split(',').filter(l => l.trim());
-  if (autoTranslate && transLangs.length > 0 && publishedIds.length > 0 && ai.isConfigured()) {
+  if (autoTranslate && transLangs.length > 0 && publishedIds.length > 0 && ai.isAvailableForTenant(res.locals.tenant)) {
+    // Get company context for domain-specific vocabulary
+    let companyContext = '';
+    if (cid) {
+      const comp = db.prepare('SELECT industry_context FROM companies WHERE id = ?').get(cid);
+      if (comp && comp.industry_context) companyContext = comp.industry_context;
+    }
     (async () => {
       try {
         const toTranslate = db.prepare(`SELECT id, title, content, excerpt FROM articles WHERE id IN (${publishedIds.join(',')})`).all();
-        const results = await ai.batchTranslateArticles(toTranslate, transLangs);
+        const results = await ai.batchTranslateArticles(toTranslate, transLangs, companyContext);
         for (const r of results) {
           if (!r.translations) continue;
           for (const [lang, t] of Object.entries(r.translations)) {
             if (t.title) {
-              const cols = { en: ['title_en','content_en','excerpt_en'], es: ['title_es','content_es','excerpt_es'], de: ['title_de','content_de','excerpt_de'] };
+              const cols = { en: ['title_en','content_en','excerpt_en'], fr: ['title_fr','content_fr','excerpt_fr'], es: ['title_es','content_es','excerpt_es'], de: ['title_de','content_de','excerpt_de'] };
               const c = cols[lang];
               if (c) db.prepare(`UPDATE articles SET ${c[0]}=?, ${c[1]}=?, ${c[2]}=? WHERE id=?`).run(t.title, t.content || '', t.excerpt || '', r.id);
             }
@@ -202,7 +328,7 @@ router.post('/ai/bulk-publish', (req, res) => {
 
 // ─── Translate Single Article ────────────────────────
 router.post('/:id/translate', async (req, res) => {
-  if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured' });
+  if (!ai.isAvailableForTenant(res.locals.tenant)) return res.status(400).json({ error: 'Service IA indisponible.' });
   const db = getDb();
   const article = db.prepare('SELECT * FROM articles WHERE id=?').get(req.params.id);
   if (!article) return res.status(404).json({ error: 'Article not found' });
@@ -210,46 +336,72 @@ router.post('/:id/translate', async (req, res) => {
   const transLangs = getSetting('translation_languages', 'en').split(',').filter(l => l.trim());
   if (!transLangs.length) return res.json({ ok: true, message: 'No languages configured' });
 
+  // Get company context for domain-specific vocabulary
+  let companyContext = '';
+  if (article.company_id) {
+    const comp = db.prepare('SELECT name, description, industry_context FROM companies WHERE id = ?').get(article.company_id);
+    if (comp && comp.industry_context) companyContext = comp.industry_context;
+  }
+
   const jobId = createJob(async () => {
-    const translations = await ai.translateArticle(article.title, article.content, article.excerpt, transLangs);
+    const translations = await ai.translateArticle(article.title, article.content, article.excerpt, transLangs, companyContext);
     for (const [lang, t] of Object.entries(translations)) {
       if (!t.title) continue;
-      const cols = { en: ['title_en','content_en','excerpt_en'], es: ['title_es','content_es','excerpt_es'], de: ['title_de','content_de','excerpt_de'] };
+      const cols = { en: ['title_en','content_en','excerpt_en'], fr: ['title_fr','content_fr','excerpt_fr'], es: ['title_es','content_es','excerpt_es'], de: ['title_de','content_de','excerpt_de'] };
       const c = cols[lang];
       if (c) db.prepare(`UPDATE articles SET ${c[0]}=?, ${c[1]}=?, ${c[2]}=? WHERE id=?`).run(t.title, t.content || '', t.excerpt || '', article.id);
     }
     return { translated: Object.keys(translations) };
-  });
+  }, req.session.tenantId);
   res.json({ ok: true, jobId });
 });
 
 // ─── Bulk Translate All Untranslated ─────────────────
 router.post('/ai/bulk-translate', async (req, res) => {
-  if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured' });
+  if (!ai.isAvailableForTenant(res.locals.tenant)) return res.status(400).json({ error: 'Service IA indisponible.' });
   const db = getDb();
   const transLangs = getSetting('translation_languages', 'en').split(',').filter(l => l.trim());
   if (!transLangs.length) return res.json({ ok: true, message: 'No languages configured' });
 
   // Find articles missing translations for ANY configured language
   const conditions = transLangs.map(l => `(title_${l} IS NULL OR title_${l} = '')`).join(' OR ');
-  const articles = db.prepare(`SELECT id, title, content, excerpt FROM articles WHERE is_published=1 AND (${conditions})`).all();
+  const articles = db.prepare(`SELECT id, title, content, excerpt, company_id FROM articles WHERE is_published=1 AND (${conditions})`).all();
 
   if (!articles.length) return res.json({ ok: true, message: 'All articles already translated' });
 
+  // Get company contexts for all involved companies
+  const companyContexts = {};
+  const companyIds = [...new Set(articles.filter(a => a.company_id).map(a => a.company_id))];
+  for (const cid of companyIds) {
+    const comp = db.prepare('SELECT industry_context FROM companies WHERE id = ?').get(cid);
+    if (comp && comp.industry_context) companyContexts[cid] = comp.industry_context;
+  }
+
   const jobId = createJob(async () => {
-    const results = await ai.batchTranslateArticles(articles, transLangs);
+    // Group articles by company for context-aware translation
     let translated = 0;
-    for (const r of results) {
-      if (!r.translations) continue;
-      for (const [lang, t] of Object.entries(r.translations)) {
-        if (!t.title) continue;
-        const cols = { en: ['title_en','content_en','excerpt_en'], es: ['title_es','content_es','excerpt_es'], de: ['title_de','content_de','excerpt_de'] };
-        const c = cols[lang];
-        if (c) { db.prepare(`UPDATE articles SET ${c[0]}=?, ${c[1]}=?, ${c[2]}=? WHERE id=?`).run(t.title, t.content || '', t.excerpt || '', r.id); translated++; }
+    const CONCURRENCY = 3;
+    for (let i = 0; i < articles.length; i += CONCURRENCY) {
+      const batch = articles.slice(i, i + CONCURRENCY);
+      const promises = batch.map(a => {
+        const ctx = a.company_id ? (companyContexts[a.company_id] || '') : '';
+        return ai.translateArticle(a.title, a.content, a.excerpt || '', transLangs, ctx)
+          .then(translations => ({ id: a.id, translations }))
+          .catch(e => ({ id: a.id, translations: {}, error: e.message }));
+      });
+      const results = await Promise.all(promises);
+      for (const r of results) {
+        if (!r.translations) continue;
+        for (const [lang, t] of Object.entries(r.translations)) {
+          if (!t.title) continue;
+          const cols = { en: ['title_en','content_en','excerpt_en'], fr: ['title_fr','content_fr','excerpt_fr'], es: ['title_es','content_es','excerpt_es'], de: ['title_de','content_de','excerpt_de'] };
+          const c = cols[lang];
+          if (c) { db.prepare(`UPDATE articles SET ${c[0]}=?, ${c[1]}=?, ${c[2]}=? WHERE id=?`).run(t.title, t.content || '', t.excerpt || '', r.id); translated++; }
+        }
       }
     }
     return { translated, total: articles.length, languages: transLangs };
-  });
+  }, req.session.tenantId);
   res.json({ ok: true, jobId, count: articles.length });
 });
 
@@ -259,33 +411,49 @@ router.post('/ai/bulk-translate', async (req, res) => {
 
 // ─── AI: Generate Article ────────────────────────────
 router.post('/ai/generate', async (req, res) => {
-  if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured. Set ANTHROPIC_API_KEY.' });
+  if (!ai.isAvailableForTenant(res.locals.tenant)) return res.status(400).json({ error: 'Service IA indisponible.' });
 
   const { title, resources } = req.body;
   const lang = req.session.lang || 'fr';
   const jobId = createJob(async () => {
-    const content = await ai.generateArticle(title, resources, lang);
+    const content = await ai.generateArticle(title, resources, lang, res.locals.tenant);
     return { articles: [{ title, content, excerpt: '', category_suggestion: '' }] };
-  });
+  }, req.session.tenantId);
   res.json({ ok: true, jobId });
 });
 
 // ─── AI: Generate from Content ───────────────────────
 router.post('/ai/generate-from-content', async (req, res) => {
-  if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured. Set ANTHROPIC_API_KEY.' });
+  if (!ai.isAvailableForTenant(res.locals.tenant)) return res.status(400).json({ error: 'Service IA indisponible.' });
 
-  const { content } = req.body;
+  const { content, company_id, output_lang } = req.body;
   const lang = req.session.lang || 'fr';
+  const db = getDb();
+
+  // Get company context
+  let companyContext = '';
+  const cid = company_id ? parseInt(company_id) : null;
+  if (cid) {
+    const comp = db.prepare('SELECT name, description, industry_context FROM companies WHERE id = ?').get(cid);
+    if (comp) {
+      const parts = [];
+      if (comp.name) parts.push('Company: ' + comp.name);
+      if (comp.description) parts.push('Description: ' + comp.description);
+      if (comp.industry_context) parts.push('Industry/Vocabulary: ' + comp.industry_context);
+      companyContext = parts.join('\n');
+    }
+  }
+
   const jobId = createJob(async () => {
-    const articles = await ai.generateArticleFromContent(content, lang);
+    const articles = await ai.generateArticleFromContent(content, lang, { outputLang: output_lang || 'source', companyContext });
     return { articles };
-  });
+  }, req.session.tenantId);
   res.json({ ok: true, jobId });
 });
 
 // ─── AI: Suggest Ticket Reply (Enhanced with KB + Staff Learning) ────
 router.post('/ai/suggest-reply', async (req, res) => {
-  if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured. Set ANTHROPIC_API_KEY.' });
+  if (!ai.isAvailableForTenant(res.locals.tenant)) return res.status(400).json({ error: 'Service IA indisponible.' });
 
   try {
     const db = getDb();
@@ -301,39 +469,94 @@ router.post('/ai/suggest-reply', async (req, res) => {
       WHERE tm.ticket_id = ? ORDER BY tm.created_at ASC
     `).all(ticketId);
 
-    // Find relevant FAQ articles
-    const keywords = ticket.subject.split(/\s+/).filter(w => w.length > 3);
-    const keywordPattern = keywords.join('%');
-    const faqArticles = keywordPattern ? db.prepare(`
-      SELECT title, excerpt, content FROM articles
-      WHERE is_published = 1 AND (title LIKE ? OR content LIKE ? OR excerpt LIKE ?)
-      LIMIT 3
-    `).all(`%${keywordPattern}%`, `%${keywordPattern}%`, `%${keywordPattern}%`) : [];
+    // ─── Extract meaningful keywords from ALL sources ───
+    const stopWords = new Set(['le','la','les','de','du','des','un','une','est','sont','dans','pour','avec','sur','que','qui','comment','quelle','quels','quelles','quel','cette','ces','mon','mes','son','ses','nous','vous','ils','elles','the','is','are','was','were','how','what','which','from','with','for','and','but','not','this','that','can','will','pas','plus','tout','aussi','ete','faire','fait','bonjour','merci','oui','non','bien','aide','aider','assistant','conversation','livechat','transferee','historique','humain','agent','projecthub']);
 
-    // ─── KB Context (smart keyword search, same as livechat) ───
-    const kbEntries = db.prepare('SELECT title, content FROM knowledge_base WHERE is_active=1').all();
+    let searchText = ticket.subject + ' ' + (ticket.description || '');
+
+    // Add ALL messages (not just visitor — livechat forwards use admin user_id)
+    const recentMsgs = messages.slice(-5);
+    recentMsgs.forEach(m => { searchText += ' ' + m.content; });
+
+    // Extract embedded livechat visitor questions: "💬 [Name]: actual question"
+    const allText = (ticket.description || '') + ' ' + messages.map(m => m.content).join(' ');
+    const embeddedQuestions = allText.match(/💬?\s*\[[^\]]*\]:\s*([^\n]+)/g);
+    if (embeddedQuestions) {
+      embeddedQuestions.forEach(q => {
+        const cleaned = q.replace(/💬?\s*\[[^\]]*\]:\s*/, '');
+        searchText += ' ' + cleaned + ' ' + cleaned; // double weight
+      });
+    }
+
+    // Also extract visitor questions from history pattern: [Visitor]: question, [Name]: question
+    const historyQuestions = allText.match(/\[(?!Assistant)[^\]]*\]:\s*([^\n]+)/g);
+    if (historyQuestions) {
+      historyQuestions.forEach(q => {
+        const cleaned = q.replace(/\[[^\]]*\]:\s*/, '');
+        if (cleaned.length > 5 && !cleaned.includes('Bonjour') && !cleaned.includes('assistant')) {
+          searchText += ' ' + cleaned;
+        }
+      });
+    }
+
+    const keywords = searchText
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[💬🔗👋🧑]/g, '') // remove emojis
+      .split(/[\s,;:.!?()[\]{}'"\/\-—]+/)
+      .filter(w => w.length > 2 && !stopWords.has(w))
+      .filter((w, i, arr) => arr.indexOf(w) === i)
+      .slice(0, 20);
+
+    console.log('[AI] Suggest reply — keywords:', keywords.join(', '));
+
+    // ─── Detect company_id from chat session if ticket doesn't have one ───
+    let effectiveCompanyId = ticket.company_id;
+    if (!effectiveCompanyId) {
+      // Check if this ticket was created from a livechat with a company
+      const linkedSession = db.prepare('SELECT company_id FROM chat_sessions WHERE ticket_id = ?').get(ticketId);
+      if (linkedSession && linkedSession.company_id) {
+        effectiveCompanyId = linkedSession.company_id;
+        console.log('[AI] Suggest reply — detected company from chat session:', effectiveCompanyId);
+      }
+    }
+
+    // ─── Find ALL FAQ articles (same approach as livechat — let AI find the right one) ───
+    let faqArticles = [];
+    {
+      let faqSQL = `SELECT a.id, a.title, a.slug, a.excerpt, a.content, co.slug as company_slug
+        FROM articles a LEFT JOIN companies co ON a.company_id = co.id
+        WHERE a.is_published = 1`;
+      if (effectiveCompanyId) faqSQL += ' AND (a.company_id = ' + effectiveCompanyId + ' OR a.company_id IS NULL)';
+      faqArticles = db.prepare(faqSQL).all();
+      console.log('[AI] Suggest reply — ALL FAQ articles:', faqArticles.length);
+    }
+
+    // ─── KB Context (smart keyword search, scoped to company) ───
+    let kbSQL = 'SELECT title, content FROM knowledge_base WHERE is_active=1';
+    if (effectiveCompanyId) kbSQL += ' AND (company_id = ' + effectiveCompanyId + ' OR company_id IS NULL)';
+    const kbEntries = db.prepare(kbSQL).all();
     let kbContext = '';
     if (kbEntries.length > 0 && keywords.length > 0) {
+      const { splitKbIntoSections } = require('../database');
       const scoredChunks = [];
       for (const kb of kbEntries) {
-        const sections = kb.content.length > 1500
-          ? kb.content.split(/\n(?=\d{1,2}\.\s+[A-Z0-9★◆■])|(?=\n#{1,3}\s)/g).filter(s => s.trim().length > 20)
-          : [kb.content];
+        const sections = splitKbIntoSections(kb.content);
         for (const section of sections) {
-          const lower = (kb.title + ' ' + section).toLowerCase();
+          const lower = (kb.title + ' ' + section).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
           let score = 0;
+          const heading = lower.substring(0, 200);
           for (const kw of keywords) {
-            const kwl = kw.toLowerCase();
-            if (lower.substring(0, 150).includes(kwl)) score += 3;
-            else if (lower.includes(kwl)) score += 1;
+            if (heading.includes(kw)) score += 3;
+            else if (lower.includes(kw)) score += 1;
           }
           if (score > 0) scoredChunks.push({ text: section.trim(), score, len: section.length });
         }
       }
       scoredChunks.sort((a, b) => b.score - a.score);
       let totalLen = 0;
-      for (const chunk of scoredChunks.slice(0, 5)) {
-        if (totalLen + chunk.len > 4000) break;
+      for (const chunk of scoredChunks.slice(0, 8)) {
+        if (totalLen + chunk.len > 6000) break;
         kbContext += chunk.text + '\n\n';
         totalLen += chunk.len;
       }
@@ -342,12 +565,13 @@ router.post('/ai/suggest-reply', async (req, res) => {
     // ─── Staff Learning: find past responses to similar tickets ───
     const staffResponses = [];
     if (keywords.length > 0) {
+      const kwSlice = keywords.slice(0, 5);
       const similarTickets = db.prepare(`
         SELECT t.id, t.subject FROM tickets t
         WHERE t.id != ? AND t.status IN ('resolved', 'closed')
-        AND (${keywords.slice(0, 3).map(() => 't.subject LIKE ?').join(' OR ')})
+        AND (${kwSlice.map(() => 't.subject LIKE ?').join(' OR ')})
         ORDER BY t.updated_at DESC LIMIT 5
-      `).all(ticketId, ...keywords.slice(0, 3).map(k => `%${k}%`));
+      `).all(ticketId, ...kwSlice.map(k => `%${k}%`));
 
       for (const st of similarTickets) {
         const staffMsg = db.prepare(`
@@ -363,7 +587,7 @@ router.post('/ai/suggest-reply', async (req, res) => {
     }
 
     console.log('[AI] Suggest reply — FAQ:', faqArticles.length, '| KB:', kbContext.length, 'chars | Staff history:', staffResponses.length);
-    const suggestion = await ai.suggestTicketReply(ticket, messages, faqArticles, lang, kbContext, staffResponses);
+    const suggestion = await ai.suggestTicketReply(ticket, messages, faqArticles, lang, kbContext, staffResponses, res.locals.tenant);
     res.json({ ok: true, suggestion, articlesUsed: faqArticles.length, kbUsed: kbContext.length > 0, staffLearned: staffResponses.length });
   } catch (e) {
     console.error('[AI] Suggest reply error:', e.message);
@@ -373,45 +597,8 @@ router.post('/ai/suggest-reply', async (req, res) => {
 
 // ─── AI: Generate Articles from Knowledge Base ──────
 // ─── AI: Diagnose KB Splitting (shows how content will be split) ─────
-router.post('/ai/diagnose-kb', (req, res) => {
-  const db = getDb();
-  const { kbIds } = req.body;
-
-  let kbEntries;
-  if (kbIds === 'all' || !kbIds) {
-    kbEntries = db.prepare('SELECT id, title, content FROM knowledge_base WHERE is_active=1').all();
-  } else {
-    const ids = Array.isArray(kbIds) ? kbIds : [kbIds];
-    kbEntries = db.prepare(`SELECT id, title, content FROM knowledge_base WHERE id IN (${ids.map(() => '?').join(',')}) AND is_active=1`).all(...ids);
-  }
-
-  const diagnosis = kbEntries.map(kb => {
-    const len = kb.content.length;
-    const preview = kb.content.substring(0, 300);
-    const strategies = {};
-
-    strategies['md_h2'] = kb.content.split(/\n(?=##\s)/).filter(s => s.trim().length > 30).length;
-    strategies['md_h1h3'] = kb.content.split(/\n(?=#{1,3}\s)/).filter(s => s.trim().length > 30).length;
-    strategies['numbered'] = kb.content.split(/\n(?=\d{1,2}\.\s)/).filter(s => s.trim().length > 30).length;
-    strategies['bold'] = kb.content.split(/\n(?=\*\*[^*]{3,}\*\*)/).filter(s => s.trim().length > 30).length;
-    strategies['paragraphs'] = kb.content.split(/\n\n+/).filter(s => s.trim().length > 50).length;
-
-    const best = Object.entries(strategies).sort((a, b) => b[1] - a[1])[0];
-    const estimatedBatches = Math.ceil(best[1] / 6);
-    const estimatedArticles = `${best[1] * 2}-${best[1] * 4}`;
-
-    return {
-      id: kb.id, title: kb.title, chars: len, preview,
-      strategies, bestStrategy: best[0], bestSections: best[1],
-      estimatedBatches, estimatedArticles
-    };
-  });
-
-  res.json({ ok: true, diagnosis });
-});
-
 // ─── KB Splitting Diagnostic (no AI cost) ────────────
-router.post('/ai/diagnose-kb', (req, res) => {
+router.post('/ai/diagnose-kb', async (req, res) => {
   const db = getDb();
   const { kbIds } = req.body;
 
@@ -429,12 +616,15 @@ router.post('/ai/diagnose-kb', (req, res) => {
       .replace(/^Title:.*\n/i, '').replace(/^URL Source:.*\n/i, '')
       .replace(/^Markdown Content:\s*\n/i, '').trim();
 
+    // Regex strategies (for info only)
     const strategies = {
       'md_h2': content.split(/\n(?=##\s+)/).filter(s => s.trim().length > 30),
       'md_any': content.split(/\n(?=#{1,4}\s+)/).filter(s => s.trim().length > 30),
-      'numbered': content.split(/\n(?=\d{1,2}\.\s*[A-Za-zÀ-ÿ])/).filter(s => s.trim().length > 30),
+      'numbered': content.split(/\n(?=\s*\u200B?\d{1,2}\.[\s]*[A-Za-zÀ-ÿ])/).filter(s => s.trim().length > 30),
       'md_numbered': content.split(/\n(?=#{1,3}\s*\d{1,2}\.)/).filter(s => s.trim().length > 30),
       'bold': content.split(/\n(?=\*\*[^*]{3,}\*\*)/).filter(s => s.trim().length > 30),
+      'bold_numbered': content.split(/\n(?=\*\*\s*\d{1,2}\.)/).filter(s => s.trim().length > 30),
+      'numbered_unicode': content.split(/\n(?=[\s\u00A0\u200B\u200C\u200D\uFEFF]*\d{1,2}\.\s*[A-Za-zÀ-ÿ])/).filter(s => s.trim().length > 30),
       'paragraphs': content.split(/\n\n+/).filter(s => s.trim().length > 50),
     };
 
@@ -447,12 +637,11 @@ router.post('/ai/diagnose-kb', (req, res) => {
       hasNumberedSections: /(^|\n)\d{1,2}\.\s*[A-Za-zÀ-ÿ]/.test(content),
       hasBoldHeaders: /(^|\n)\*\*[^*]+\*\*/.test(content),
       strategies: Object.fromEntries(Object.entries(strategies).map(([k, v]) => [k, v.length])),
-      bestStrategy: best[0],
-      bestSections: best[1].length,
-      sectionPreviews: best[1].slice(0, 8).map(s => s.substring(0, 80).replace(/\n/g, ' ')),
-      estimatedArticles: best[1].length <= 3 ? best[1].length + '-' + (best[1].length * 2)
-        : Math.round(best[1].length * 0.8) + '-' + Math.round(best[1].length * 1.5),
-      estimatedBatches: Math.ceil(best[1].length / 4),
+      bestRegexStrategy: best[0],
+      bestRegexSections: best[1].length,
+      method: kb.content.length > 800 ? '🤖 AI structure analysis (primary)' : '📝 Direct (short content)',
+      sectionPreviews: best[1].slice(0, 12).map(s => s.substring(0, 100).replace(/\n/g, ' ')),
+      estimatedArticles: best[1].length + '-' + Math.round(best[1].length * 1.5),
     });
   }
 
@@ -460,15 +649,18 @@ router.post('/ai/diagnose-kb', (req, res) => {
 });
 
 router.post('/ai/generate-from-kb', async (req, res) => {
-  if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured' });
+  if (!ai.isAvailableForTenant(res.locals.tenant)) return res.status(400).json({ error: 'Service IA indisponible.' });
 
   const db = getDb();
-  const { kbIds } = req.body;
+  const { kbIds, company_id, output_lang } = req.body;
   const lang = req.session.lang || 'fr';
+  const cid = company_id ? parseInt(company_id) : null;
 
   let kbEntries;
   if (kbIds === 'all' || !kbIds) {
-    kbEntries = db.prepare('SELECT id, title, content FROM knowledge_base WHERE is_active=1').all();
+    let sql = 'SELECT id, title, content FROM knowledge_base WHERE is_active=1';
+    if (cid) sql += ' AND (company_id = ' + cid + ' OR company_id IS NULL)';
+    kbEntries = db.prepare(sql).all();
   } else {
     const ids = Array.isArray(kbIds) ? kbIds : [kbIds];
     kbEntries = db.prepare(`SELECT id, title, content FROM knowledge_base WHERE id IN (${ids.map(() => '?').join(',')}) AND is_active=1`).all(...ids);
@@ -476,20 +668,39 @@ router.post('/ai/generate-from-kb', async (req, res) => {
 
   if (!kbEntries.length) return res.status(400).json({ error: 'No KB entries found' });
 
-  // Get real categories from DB so AI uses them
-  const categories = db.prepare('SELECT slug, name, name_en FROM article_categories ORDER BY position').all();
+  // Get real categories from DB, scoped to company if applicable
+  let catSQL = 'SELECT slug, name, name_en FROM article_categories';
+  if (cid) catSQL += ' WHERE company_id = ' + cid;
+  catSQL += ' ORDER BY position';
+  const categories = db.prepare(catSQL).all();
   const catList = categories.map(c => `${c.slug} (${lang === 'fr' ? c.name : (c.name_en || c.name)})`).join(', ');
 
+  // Get company context for vocabulary/industry
+  let companyContext = '';
+  if (cid) {
+    const comp = db.prepare('SELECT name, description, industry_context, chatbot_context FROM companies WHERE id = ?').get(cid);
+    if (comp) {
+      const parts = [];
+      if (comp.name) parts.push('Company: ' + comp.name);
+      if (comp.description) parts.push('Description: ' + comp.description);
+      if (comp.industry_context) parts.push('Industry/Vocabulary: ' + comp.industry_context);
+      companyContext = parts.join('\n');
+    }
+  }
+
+  // output_lang: 'source' (default) keeps original language, 'fr'/'en' etc. translates
+  const effectiveOutputLang = output_lang || 'source';
+
   const jobId = createJob(async () => {
-    const articles = await ai.generateFromKB(kbEntries, lang, catList);
+    const articles = await ai.generateFromKB(kbEntries, lang, catList, { outputLang: effectiveOutputLang, companyContext });
     return { articles };
-  });
+  }, req.session.tenantId);
   res.json({ ok: true, jobId });
 });
 
 // ─── AI: Analyze Patterns → Suggest FAQ Articles ────
 router.post('/ai/analyze-patterns', async (req, res) => {
-  if (!ai.isConfigured()) return res.status(400).json({ error: 'AI not configured' });
+  if (!ai.isAvailableForTenant(res.locals.tenant)) return res.status(400).json({ error: 'Service IA indisponible.' });
 
   const db = getDb();
   const lang = req.session.lang || 'fr';
@@ -551,7 +762,7 @@ router.post('/ai/analyze-patterns', async (req, res) => {
 
     console.log('[AI] Pattern analysis — questions:', questions.length, '| saved:', saved);
     return { saved, total: suggestions.length };
-  });
+  }, req.session.tenantId);
   res.json({ ok: true, jobId });
 });
 
@@ -576,13 +787,13 @@ router.get('/suggestions', (req, res) => {
 
   const categories = db.prepare('SELECT * FROM article_categories ORDER BY position ASC').all();
 
-  res.render('admin/ai-suggestions', { user: req.session.user, t, suggestions, categories, aiConfigured: ai.isConfigured() });
+  res.render('admin/ai-suggestions', { user: req.session.user, t, suggestions, categories, aiConfigured: ai.isAvailableForTenant(res.locals.tenant) });
 });
 
 // ─── Approve/Edit/Reject Suggestion ─────────────────
 router.post('/suggestions/:id/review', (req, res) => {
   const db = getDb();
-  const { action, title, content, excerpt, category_id } = req.body;
+  const { action, title, content, excerpt, category_id, company_id } = req.body;
   const suggestion = db.prepare('SELECT * FROM ai_article_suggestions WHERE id=?').get(req.params.id);
   if (!suggestion) return res.redirect('/admin/articles/suggestions');
 
@@ -590,13 +801,15 @@ router.post('/suggestions/:id/review', (req, res) => {
     // Create the article
     const slug = (title || suggestion.title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const catId = category_id || null;
-    const result = db.prepare(`INSERT INTO articles (title, slug, excerpt, content, category_id, is_published, is_public, author_id)
-      VALUES (?, ?, ?, ?, ?, 1, 1, ?)`).run(
+    const cid = company_id ? parseInt(company_id) : (suggestion.company_id || null);
+    const result = db.prepare(`INSERT INTO articles (title, slug, excerpt, content, category_id, company_id, is_published, is_public, author_id)
+      VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)`).run(
       title || suggestion.title,
       slug,
       excerpt || suggestion.excerpt || '',
       content || suggestion.content,
       catId,
+      cid,
       req.session.user.id
     );
 

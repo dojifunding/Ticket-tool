@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= tenant.name %> — Platform Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    body { background: #0a0a0f; }
+    .sa-wrapper { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+    .sa-topbar { display: flex; justify-content: space-between; align-items: center; padding: 1rem 0; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+    .sa-topbar-left { display: flex; align-items: center; gap: 1rem; }
+    .sa-badge { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.2); color: #ef4444; padding: .25rem .6rem; border-radius: 6px; font-size: .7rem; font-weight: 800; }
+    .sa-back { color: var(--text-muted); text-decoration: none; font-size: .85rem; }
+    .sa-back:hover { color: var(--text-primary); }
+    .sa-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .75rem; margin-bottom: 1.5rem; }
+    .sa-stat { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; text-align: center; }
+    .sa-stat-value { font-size: 1.5rem; font-weight: 800; }
+    .sa-stat-label { font-size: .75rem; color: var(--text-muted); margin-top: .2rem; }
+    .sa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 768px) { .sa-grid { grid-template-columns: 1fr; } }
+    .card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+    .card h3 { font-size: 1rem; font-weight: 800; margin-bottom: 1rem; display: flex; align-items: center; gap: .5rem; }
+    .form-row-sa { display: flex; align-items: center; justify-content: space-between; padding: .6rem 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .form-row-sa label { font-weight: 600; font-size: .85rem; color: var(--text-secondary); }
+    .form-row-sa select, .form-row-sa input[type="number"] { padding: .4rem .6rem; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-family: inherit; }
+    .toggle-switch { position: relative; width: 44px; height: 24px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #333; border-radius: 24px; transition: .3s; }
+    .toggle-slider::before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: .3s; }
+    .toggle-switch input:checked + .toggle-slider { background: #10b981; }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+    .btn-sa { padding: .6rem 1.25rem; border-radius: 10px; border: none; font-family: inherit; font-weight: 700; font-size: .85rem; cursor: pointer; transition: all .2s; }
+    .btn-save { background: #6366f1; color: white; }
+    .btn-save:hover { background: #4f46e5; }
+    .btn-danger { background: rgba(239,68,68,.1); color: #ef4444; border: 1px solid rgba(239,68,68,.2); }
+    .btn-danger:hover { background: rgba(239,68,68,.2); }
+    .sa-table { width: 100%; border-collapse: collapse; }
+    .sa-table th { text-align: left; padding: .5rem .6rem; font-size: .7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    .sa-table td { padding: .5rem .6rem; font-size: .85rem; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .success-msg { background: rgba(16,185,129,.1); border: 1px solid rgba(16,185,129,.2); color: #10b981; padding: .6rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: .85rem; }
+    .info-row { display: flex; justify-content: space-between; padding: .4rem 0; border-bottom: 1px solid rgba(255,255,255,.04); font-size: .85rem; }
+    .info-label { color: var(--text-muted); } .info-value { font-weight: 600; }
+    .sa-plan-badge { display: inline-block; padding: .15rem .5rem; border-radius: 4px; font-size: .7rem; font-weight: 700; text-transform: uppercase; }
+    .sa-plan-trial { background: rgba(245,158,11,.1); color: #f59e0b; }
+    .sa-plan-starter { background: rgba(99,102,241,.1); color: #6366f1; }
+    .sa-plan-pro { background: rgba(16,185,129,.1); color: #10b981; }
+    .sa-plan-enterprise { background: rgba(239,68,68,.1); color: #ef4444; }
+  </style>
+</head>
+<body>
+  <div class="sa-wrapper">
+
+    <div class="sa-topbar">
+      <div class="sa-topbar-left">
+        <a href="/superadmin" class="sa-back">← Retour</a>
+        <span class="sa-badge">🔐 PLATFORM ADMIN</span>
+        <h1 style="font-size:1.2rem"><%= tenant.name %></h1>
+        <span class="sa-plan-badge sa-plan-<%= tenant.plan_id %>"><%= tenant.plan_id %></span>
+      </div>
+      <div style="font-size:.8rem;color:var(--text-muted)">ID: <code style="font-size:.75rem"><%= tenant.id %></code></div>
+    </div>
+
+    <script>if(new URLSearchParams(location.search).has('saved')){document.write('<div class="success-msg">✅ Modifications enregistrées.</div>')}</script>
+
+    <!-- Quick Stats -->
+    <div class="sa-stats">
+      <div class="sa-stat"><div class="sa-stat-value"><%= accounts.length %></div><div class="sa-stat-label">Utilisateurs</div></div>
+      <div class="sa-stat"><div class="sa-stat-value"><%= ticketCount %></div><div class="sa-stat-label">Tickets</div></div>
+      <div class="sa-stat"><div class="sa-stat-value"><%= articleCount %></div><div class="sa-stat-label">Articles FAQ</div></div>
+      <div class="sa-stat"><div class="sa-stat-value"><%= kbCount %></div><div class="sa-stat-label">Entrées KB</div></div>
+      <div class="sa-stat"><div class="sa-stat-value" style="color:#6366f1"><%= aiUsage.calls %></div><div class="sa-stat-label">Appels IA (30j)</div></div>
+      <div class="sa-stat"><div class="sa-stat-value" style="color:#ef4444">$<%= parseFloat(aiUsage.cost).toFixed(3) %></div><div class="sa-stat-label">Coût IA (30j)</div></div>
+    </div>
+
+    <div class="sa-grid">
+
+      <!-- Management Form -->
+      <div>
+        <form method="POST" action="/superadmin/tenant/<%= tenant.id %>" class="card">
+          <h3>⚙️ Gestion du client</h3>
+
+          <div class="form-row-sa">
+            <label>Plan</label>
+            <select name="plan_id">
+              <% plans.forEach(p => { %>
+                <option value="<%= p.id %>" <%= tenant.plan_id === p.id ? 'selected' : '' %>><%= p.name %> (<%= p.price_monthly %>€/mois)</option>
+              <% }) %>
+            </select>
+          </div>
+
+          <div class="form-row-sa">
+            <label>Client actif</label>
+            <label class="toggle-switch">
+              <input type="checkbox" name="is_active" <%= tenant.is_active ? 'checked' : '' %>>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="form-row-sa">
+            <label>IA activée</label>
+            <label class="toggle-switch">
+              <input type="checkbox" name="ai_enabled" <%= tenant.ai_enabled ? 'checked' : '' %>>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="form-row-sa">
+            <label>Limite appels IA / mois</label>
+            <input type="number" name="ai_calls_limit" value="<%= typeof tenant.ai_calls_limit !== 'undefined' ? tenant.ai_calls_limit : -1 %>" min="-1" style="width:100px" title="-1 = illimité">
+            <span style="font-size:.75rem;color:var(--text-muted)">-1 = illimité</span>
+          </div>
+
+          <div style="margin-top:1.25rem;display:flex;gap:.75rem">
+            <button type="submit" class="btn-sa btn-save">💾 Enregistrer</button>
+          </div>
+        </form>
+
+        <!-- Danger zone -->
+        <div class="card" style="border-color:rgba(239,68,68,.2)">
+          <h3 style="color:#ef4444">⚠️ Zone dangereuse</h3>
+          <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">Désactiver ce client rendra son espace inaccessible.</p>
+          <form method="POST" action="/superadmin/tenant/<%= tenant.id %>/delete" onsubmit="return confirm('Êtes-vous sûr de vouloir désactiver ce client ?')">
+            <button type="submit" class="btn-sa btn-danger">🗑️ Désactiver le client</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Info + Accounts -->
+      <div>
+        <div class="card">
+          <h3>📋 Informations</h3>
+          <div class="info-row"><span class="info-label">Nom</span><span class="info-value"><%= tenant.name %></span></div>
+          <div class="info-row"><span class="info-label">Slug</span><span class="info-value" style="font-family:monospace"><%= tenant.slug %></span></div>
+          <div class="info-row"><span class="info-label">Secteur</span><span class="info-value"><%= tenant.ai_profile || 'generic' %></span></div>
+          <div class="info-row"><span class="info-label">Profil IA</span><span class="info-value"><%= tenant.ai_profile %></span></div>
+          <div class="info-row"><span class="info-label">Locale</span><span class="info-value"><%= tenant.locale || 'fr' %></span></div>
+          <div class="info-row"><span class="info-label">Créé le</span><span class="info-value"><%= new Date(tenant.created_at).toLocaleDateString('fr-FR') %></span></div>
+          <div class="info-row"><span class="info-label">Modifié le</span><span class="info-value"><%= new Date(tenant.updated_at).toLocaleDateString('fr-FR') %></span></div>
+          <% if (tenant.trial_ends_at) { %>
+          <div class="info-row"><span class="info-label">Fin d'essai</span><span class="info-value" style="color:#f59e0b"><%= new Date(tenant.trial_ends_at).toLocaleDateString('fr-FR') %></span></div>
+          <% } %>
+          <% if (tenant.company_website) { %>
+          <div class="info-row"><span class="info-label">Site web</span><span class="info-value"><a href="<%= tenant.company_website %>" target="_blank" style="color:var(--primary)"><%= tenant.company_website %></a></span></div>
+          <% } %>
+        </div>
+
+        <div class="card">
+          <h3>👥 Comptes (<%= accounts.length %>)</h3>
+          <table class="sa-table">
+            <thead><tr><th>Nom</th><th>Email</th><th>Owner</th><th>Créé</th></tr></thead>
+            <tbody>
+              <% accounts.forEach(a => { %>
+                <tr>
+                  <td><%= a.full_name %></td>
+                  <td style="font-size:.8rem;color:var(--text-muted)"><%= a.email %></td>
+                  <td><%= a.is_owner ? '👑' : '' %></td>
+                  <td style="font-size:.8rem;color:var(--text-muted)"><%= new Date(a.created_at).toLocaleDateString('fr-FR') %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- AI Usage by Day -->
+    <% if (aiByDay.length > 0) { %>
+    <div class="card">
+      <h3>📊 Détail IA par jour (30 derniers jours)</h3>
+      <table class="sa-table">
+        <thead><tr><th>Date</th><th>Appels</th><th>Tokens</th><th>Coût</th></tr></thead>
+        <tbody>
+          <% aiByDay.forEach(d => { %>
+            <tr>
+              <td><%= d.day %></td>
+              <td><%= d.calls %></td>
+              <td><%= (d.tokens / 1000).toFixed(1) %>K</td>
+              <td>$<%= d.cost.toFixed(4) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+
+  </div>
+</body>
+</html>

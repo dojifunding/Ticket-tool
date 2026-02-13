@@ -1,3 +1,6 @@
+<% const base = typeof helpBase !== "undefined" ? helpBase : "/help"; %>
+<% const companyName = (typeof company !== "undefined" && company) ? company.name : (typeof tenant !== "undefined" && tenant) ? tenant.name : "ProjectHub"; %>
+<% const companyColor = (typeof brandColor !== "undefined") ? brandColor : "#6366f1"; %>
 <!DOCTYPE html>
 <html lang="<%= t.lang %>">
 <head>
@@ -8,16 +11,20 @@
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/help.css">
   <link rel="stylesheet" href="/css/livechat.css">
+  <% if (typeof tenant !== 'undefined' && tenant && tenant.brand_color && tenant.brand_color !== '#6366f1') { %>
+  <style>:root { --primary: <%= tenant.brand_color %>; --primary-dark: <%= tenant.brand_color_dark || tenant.brand_color %>; }</style>
+  <% } %>
 </head>
 <body class="help-body">
   <nav class="help-nav">
     <div class="help-nav-inner">
-      <a href="/help" class="help-logo">
-        <div class="logo-icon">P</div>
+      <a href="<%= base %>" class="help-logo">
+        <% if (typeof tenant !== 'undefined' && tenant && tenant.logo_url) { %><img src="<%= tenant.logo_url %>" alt="" style="width:30px;height:30px;border-radius:6px;object-fit:contain"><% } else { %><div class="logo-icon"><%= (typeof tenant !== 'undefined' && tenant && tenant.name) ? tenant.name.charAt(0).toUpperCase() : 'P' %></div><% } %>
         <span><%= t.help_title %></span>
       </a>
       <div class="help-nav-actions">
-        <a href="/help/submit" class="btn btn-primary btn-sm"><%= t.help_submit_nav %></a>
+        <a href="<%= base %>/submit" class="btn btn-primary btn-sm"><%= t.help_submit_nav %></a>
+        <a href="<%= base %>/my-tickets" class="btn btn-ghost btn-sm">📋 Mes demandes</a>
         <div class="lang-toggle lang-toggle-multi">
           <a href="/lang/fr" class="lang-btn <%= t.lang === 'fr' ? 'active' : '' %>">FR</a>
           <a href="/lang/en" class="lang-btn <%= t.lang === 'en' ? 'active' : '' %>">EN</a>
@@ -35,7 +42,7 @@
 
   <main class="help-main">
     <div class="help-breadcrumb">
-      <a href="/help"><%= t.help_title %></a>
+      <a href="<%= base %>"><%= t.help_title %></a>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
       <span><%= category.displayName %></span>
     </div>
@@ -49,7 +56,7 @@
     <% if (articles.length > 0) { %>
       <div class="help-results-list">
         <% articles.forEach(article => { %>
-          <a href="/help/article/<%= article.slug %>" class="help-result-item">
+          <a href="<%= base %>/article/<%= article.slug %>" class="help-result-item">
             <h3><%= article.displayTitle %></h3>
             <p><%= article.displayExcerpt || '' %></p>
             <% if (!article.is_public) { %><span class="help-private-badge">🔒 <%= t.help_staff_only %></span><% } %>
@@ -59,13 +66,13 @@
     <% } else { %>
       <div class="help-empty">
         <h3><%= t.help_no_articles %></h3>
-        <a href="/help" class="btn btn-ghost"><%= t.help_back_home %></a>
+        <a href="<%= base %>" class="btn btn-ghost"><%= t.help_back_home %></a>
       </div>
     <% } %>
   </main>
 
   <footer class="help-footer">
-    <p>© <%= new Date().getFullYear() %> ProjectHub — <%= t.help_footer %></p>
+    <p>© <%= new Date().getFullYear() %> <%= (typeof tenant !== 'undefined' && tenant && tenant.name) ? tenant.name : 'ProjectHub' %> — <%= t.help_footer %></p>
   </footer>
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/livechat.js"></script>
