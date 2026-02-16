@@ -27,6 +27,10 @@
 
 const { buildTenantAiContext, getTenantGreeting } = require('./ai-profiles');
 
+// ─── Language Helpers ────────────────────────────────
+const LANG_LABELS = { en: 'English', fr: 'French', es: 'Spanish', de: 'German', it: 'Italian', pt: 'Portuguese', nl: 'Dutch', ja: 'Japanese', zh: 'Chinese', ko: 'Korean', ar: 'Arabic', ru: 'Russian' };
+function getLangLabel(lang) { return LANG_LABELS[lang] || LANG_LABELS.en; }
+
 // ─── Provider Configurations ─────────────────────────
 const PROVIDERS = {
   anthropic: {
@@ -242,7 +246,7 @@ async function callClaude(systemPrompt, userMessage, maxTokens = 2000, timeoutMs
 
 // ─── Generate FAQ Article from Resources ─────────────
 async function generateArticle(title, resources, lang = 'fr', tenant = null) {
-  const langLabel = lang === 'en' ? 'English' : 'French';
+  const langLabel = getLangLabel(lang);
   const profileContext = tenant ? buildTenantAiContext(tenant, lang) : '';
 
   const systemPrompt = `You are a professional help center article writer. Write clear, helpful, well-structured FAQ articles for a customer help center.
@@ -272,7 +276,7 @@ async function generateArticleFromContent(content, lang = 'fr', options = {}) {
   const { outputLang, companyContext } = options;
   const preserveSource = !outputLang || outputLang === 'source';
   const langNames = { en: 'English', fr: 'French', es: 'Spanish', de: 'German' };
-  const targetLangLabel = preserveSource ? null : (langNames[outputLang] || langNames[lang] || 'French');
+  const targetLangLabel = preserveSource ? null : (langNames[outputLang] || langNames[lang] || 'English');
 
   let langInstruction;
   if (preserveSource) {
@@ -332,22 +336,31 @@ Return: [{"title":"...","excerpt":"...","content":"...","category_suggestion":"s
 
 // ─── Suggest Reply for Support Ticket ────────────────
 async function suggestTicketReply(ticket, messages, faqArticles, lang = 'fr', kbContext = '', staffResponses = [], tenant = null) {
-  const langLabel = lang === 'en' ? 'English' : 'French';
+  const langLabel = getLangLabel(lang);
   const profileContext = tenant ? buildTenantAiContext(tenant, lang) : '';
+
+  // Language-specific "I don't know" response
+  const iDontKnow = lang === 'fr'
+    ? "Je n'ai pas trouvé d'information spécifique sur ce sujet dans notre base de connaissances."
+    : lang === 'es'
+    ? "No encontré información específica sobre este tema en nuestra base de conocimientos."
+    : lang === 'de'
+    ? "Ich habe keine spezifischen Informationen zu diesem Thema in unserer Wissensdatenbank gefunden."
+    : "I couldn't find specific information about this topic in our knowledge base.";
 
   const systemPrompt = `You are a professional, empathetic customer support agent. Suggest a reply to a customer support ticket.
 
 ${profileContext}Rules:
-- Write in ${langLabel}
+- Write ENTIRELY in ${langLabel} — every word of your response must be in ${langLabel}
 - Be professional, warm, and helpful
 
 CRITICAL — RESPONSE STYLE:
 - GO STRAIGHT TO THE ANSWER in the first sentence. No preamble, no filler.
-- NEVER start with "Cher [nom]", "Bonjour [nom]", "Merci pour votre message/question...", "Nous vous remercions...", "Thank you for reaching out..." or any similar greeting/preamble
+- NEVER start with greetings, "thank you for your message", or any similar preamble
 - NEVER restate or summarize the customer's question before answering
 - First sentence = the answer or the most important information
 - Be CONCISE: give the key information directly, then add details only if needed
-- NEVER add generic disclaimers like "Les informations ne constituent pas un conseil...", "Pour toute décision financière, consultez..." or "N'hésitez pas à nous contacter pour toute question"
+- NEVER add generic disclaimers about consulting professionals, investment advice, etc.
 - Don't use overly formal language, be natural and direct
 - Keep the response complete but concise (3-6 sentences) — NEVER cut off mid-sentence
 
@@ -355,7 +368,7 @@ CRITICAL — SOURCE PRIORITY (follow this order STRICTLY):
 1. FAQ ARTICLES are your #1 source of truth — if a FAQ article covers the topic, USE IT and cite the specific details from it
 2. KNOWLEDGE BASE is your #2 source — use it only if FAQ articles don't cover the topic
 3. PAST STAFF RESPONSES are examples of tone/style — learn from them but don't contradict FAQ/KB
-4. If NEITHER FAQ nor KB covers the topic: say "Je n'ai pas trouvé d'information spécifique sur ce sujet dans notre base de connaissances."
+4. If NEITHER FAQ nor KB covers the topic: say "${iDontKnow}"
 
 CRITICAL — NEVER FABRICATE:
 - NEVER claim that a rule, feature, or policy does NOT exist
@@ -364,6 +377,7 @@ CRITICAL — NEVER FABRICATE:
 - NEVER contradict what is written in a FAQ article
 
 CRITICAL: Answer the customer's LATEST question/message, not older ones
+CRITICAL: Your ENTIRE response must be in ${langLabel}. Do not mix languages.
 Return ONLY the reply text, nothing else`;
 
   let context = `TICKET: ${ticket.reference} — ${ticket.subject}
@@ -410,7 +424,7 @@ Category: ${ticket.category}`;
 
 // ─── Improve/Rewrite Text ────────────────────────────
 async function improveText(text, instruction, lang = 'fr') {
-  const langLabel = lang === 'en' ? 'English' : 'French';
+  const langLabel = getLangLabel(lang);
   const systemPrompt = `You are a professional editor. Improve the provided text according to the given instruction. Write in ${langLabel}. Return ONLY the improved text, nothing else.`;
 
   return await callClaude(systemPrompt, `Instruction: ${instruction}\n\nText to improve:\n${text}`, 2000, 120000, 'fast');
@@ -512,29 +526,38 @@ module.exports = {
 
 // ─── Livechat AI Agent ───────────────────────────────
 async function livechatReply(chatHistory, knowledgeContext, faqContext, lang = 'fr', companyName = '', chatbotContext = '', tenant = null) {
-  const langLabel = lang === 'en' ? 'English' : 'French';
-  const name = companyName || 'notre entreprise';
+  const langLabel = getLangLabel(lang);
+  const name = companyName || 'our company';
 
   // Build tenant-specific AI personality from profile
   const profileContext = tenant ? buildTenantAiContext(tenant, lang) : '';
 
+  // Language-specific "I don't know" response
+  const iDontKnow = lang === 'fr'
+    ? "Je n'ai pas d'informations spécifiques concernant [sujet] dans ma base de connaissances. Souhaitez-vous que je vous mette en contact avec un agent humain ?"
+    : lang === 'es'
+    ? "No tengo información específica sobre [tema] en mi base de conocimientos. ¿Le gustaría hablar con un agente humano?"
+    : lang === 'de'
+    ? "Ich habe keine spezifischen Informationen zu [Thema] in meiner Wissensdatenbank. Möchten Sie mit einem menschlichen Agenten verbunden werden?"
+    : "I don't have specific information about [topic] in my knowledge base. Would you like me to connect you with a human agent?";
+
   const systemPrompt = `You are a friendly, professional AI support agent for ${name}. Your name is "Assistant".
 
 ${profileContext}${chatbotContext ? `COMPANY CONTEXT:\n${chatbotContext}\n\n` : ''}Rules:
-- Write in ${langLabel}
+- Write ENTIRELY in ${langLabel} — every word of your response must be in ${langLabel}
 - Be warm, helpful, and clear
 
 CRITICAL — RESPONSE STYLE:
-- GO STRAIGHT TO THE ANSWER. No preamble, no filler, no "thank you for your question"
-- NEVER start with "Nous vous remercions de votre question...", "Merci pour votre question...", "C'est une excellente question...", "Thank you for asking..." or similar
+- GO STRAIGHT TO THE ANSWER. No preamble, no filler, no greetings before answering
+- NEVER start with greetings, "thank you for your question", or any similar preamble when answering a question
 - NEVER start with a long intro paragraph that restates or summarizes the question
 - First sentence = the answer or the most important information
 - Be CONCISE: give the key information directly, then add details if needed
 - Keep simple answers short (2-4 sentences)
 - For complex topics, provide complete answers but still start with the key point first
 - NEVER cut off mid-sentence or mid-paragraph
-- NEVER add generic disclaimers like "Les informations fournies ne constituent pas un conseil en investissement", "Pour toute décision financière, consultez votre conseiller..." — these are unnecessary and unhelpful
-- NEVER end with generic advice like "N'hésitez pas à nous contacter" unless the user specifically needs further assistance
+- NEVER add generic disclaimers about investment advice, consulting professionals, etc. — these are unnecessary and unhelpful
+- NEVER end with generic advice like "don't hesitate to contact us" unless the user specifically needs further assistance
 
 - Use the KNOWLEDGE BASE and FAQ ARTICLES provided to answer questions accurately
 - If the answer is in the knowledge base or FAQ, provide it directly and confidently
@@ -548,9 +571,8 @@ CRITICAL — SOURCE PRIORITY:
 
 CRITICAL — WHEN YOU DON'T KNOW:
 - If the question is about a topic, company, product, or service NOT covered in the KNOWLEDGE BASE or FAQ ARTICLES below, you MUST respond ONLY with a short message like:
-  "Je n'ai pas d'informations spécifiques concernant [sujet] dans ma base de connaissances. Souhaitez-vous que je vous mette en contact avec un agent humain ?"
+  "${iDontKnow}"
 - NEVER give generic advice, recommendations, disclaimers, or general knowledge when the answer is not in your knowledge base
-- NEVER say things like "Les règles peuvent varier...", "Je vous recommande de consulter...", "Les informations que je fournis ne constituent pas..."
 - NEVER improvise, speculate, or add information from your general training — ONLY use what is in the KNOWLEDGE BASE and FAQ ARTICLES sections below
 - Your ONLY sources of truth are the KNOWLEDGE BASE and FAQ ARTICLES below — nothing else
 - CRITICAL — NEVER FABRICATE: NEVER claim that a rule, feature, or policy does NOT exist. If the KB/FAQ doesn't mention it, say you don't have information — do NOT say "there is no such rule" or "this doesn't apply" or "we don't have this policy"
@@ -562,8 +584,9 @@ Other rules:
 - Prefer short paragraphs over long bullet lists
 - Use line breaks to separate ideas
 - If the user greets you AND this is the FIRST exchange (no prior assistant messages in history), greet back warmly and ask how you can help
-- IMPORTANT: Do NOT say "Bonjour", "Hello", or any greeting if you have already greeted in the conversation history. Jump straight to answering the question.
-- IMPORTANT: Only answer the user's LATEST message. Do NOT repeat or summarize answers you already gave in previous messages. If the conversation history contains prior Q&A, ignore those topics and focus solely on the new question.
+- IMPORTANT: Do NOT greet if you have already greeted in the conversation history. Jump straight to answering the question.
+- IMPORTANT: Only answer the user's LATEST message. Do NOT repeat or summarize answers you already gave in previous messages.
+- CRITICAL: Your ENTIRE response must be in ${langLabel}. Do not mix languages.
 
 KNOWLEDGE BASE (secondary source):
 ${knowledgeContext || 'No specific knowledge available.'}
@@ -919,7 +942,7 @@ Return ONLY a valid JSON array of strings:
   }
 
   const langNames = { en: 'English', fr: 'French', es: 'Spanish', de: 'German' };
-  const targetLangLabel = preserveSource ? null : (langNames[outputLang] || langNames[lang] || 'French');
+  const targetLangLabel = preserveSource ? null : (langNames[outputLang] || langNames[lang] || 'English');
 
   // Build language instruction
   let langInstruction;
@@ -1022,7 +1045,7 @@ Return ONLY a valid JSON array with EXACTLY as many objects as sections provided
   console.log('[AI] KB generation complete:', allArticles.length, 'articles from', maxBatches, 'batches (' + sections.length + ' sections)');
 
   if (allArticles.length === 0) {
-    return [{ title: 'Erreur de génération', excerpt: '', content: 'L\'IA n\'a pas pu générer d\'articles. Réessayez.', category_suggestion: 'general' }];
+    return [{ title: 'Generation Error', excerpt: '', content: 'AI could not generate articles. Please try again.', category_suggestion: 'general' }];
   }
 
   return allArticles;
@@ -1030,7 +1053,7 @@ Return ONLY a valid JSON array with EXACTLY as many objects as sections provided
 
 // ─── Analyze Ticket/Chat Patterns → Suggest Articles ─
 async function analyzeTicketPatterns(recentQuestions, existingArticleTitles, lang = 'fr') {
-  const langLabel = lang === 'en' ? 'English' : 'French';
+  const langLabel = getLangLabel(lang);
   const systemPrompt = `You are an AI analyst for a customer support team. Analyze recent customer questions and detect recurring patterns that should become FAQ articles.
 
 Rules:

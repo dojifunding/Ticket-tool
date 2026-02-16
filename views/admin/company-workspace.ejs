@@ -181,17 +181,28 @@
   <div class="ws-panel" id="tab-helpcenter" style="display:<%= tab === 'helpcenter' ? 'block' : 'none' %>">
     <div class="card">
       <div class="card-header">
-        <h2>📚 Help Center & Traductions</h2>
+        <h2>📚 Help Center & Translations</h2>
       </div>
       <div class="card-body">
         <div class="form-group">
-          <label><strong>Langues de traduction</strong> (séparées par des virgules)</label>
-          <input type="text" name="translation_languages" value="<%= company.translation_languages || 'en' %>" placeholder="en,es,de">
-          <p class="text-muted" style="font-size:.8rem;margin:.25rem 0 0">Codes supportés : en, es, de, fr (défaut).</p>
+          <label><strong>Translation Languages</strong></label>
+          <p class="text-muted" style="font-size:.8rem;margin:.25rem 0 .5rem">English is the primary language. Select which languages to translate articles into.</p>
+          <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+            <% const wsLangs = { fr: '🇫🇷 French', es: '🇪🇸 Spanish', de: '🇩🇪 German' };
+               const wsActiveLangs = (company.translation_languages || '').split(',').map(l => l.trim());
+            %>
+            <% for (const [code, label] of Object.entries(wsLangs)) { %>
+              <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;padding:.5rem .75rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-tertiary)">
+                <input type="checkbox" name="translation_languages" value="<%= code %>"
+                  <%= wsActiveLangs.includes(code) ? 'checked' : '' %>>
+                <span><%= label %></span>
+              </label>
+            <% } %>
+          </div>
         </div>
         <label class="toggle-item" style="margin:.75rem 0">
           <input type="checkbox" name="auto_translate_articles" value="1" <%= company.auto_translate_articles ? 'checked' : '' %>>
-          <span>🌍 Traduction automatique des articles à la publication</span>
+          <span>🌍 Auto-translate articles on publish</span>
         </label>
 
         <!-- FAQ Categories for this company -->

@@ -172,7 +172,7 @@
       const res = await fetch('/api/chat/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, company_slug: companySlug })
+        body: JSON.stringify({ name, email, company_slug: companySlug, lang: state.lang })
       });
       const data = await res.json();
       if (data.ok) {
@@ -415,8 +415,8 @@
 
   // ─── Escalate to Human ─────────────────────────────
   async function escalateToHuman() {
-    // If name/email missing, show inline form instead of browser prompt()
-    if (!state.session?.visitor_name) {
+    // If name or email missing, show inline form to collect them
+    if (!state.session?.visitor_name || !state.session?.visitor_email) {
       showEscalateForm();
       return;
     }
@@ -425,11 +425,14 @@
 
   function showEscalateForm() {
     const bar = document.getElementById('lc-escalate-bar');
+    const existingName = state.session?.visitor_name || '';
+    const existingEmail = state.session?.visitor_email || '';
     bar.innerHTML = `
       <div class="lc-escalate-form">
         <p style="font-size:0.78rem; color:var(--lc-text-muted,#64748b); margin:0 0 8px;">${t('escalateInfo')}</p>
-        <input type="text" id="lc-esc-name" placeholder="${t('nameLabel')}" class="lc-esc-input" autocomplete="name">
-        <input type="email" id="lc-esc-email" placeholder="${t('emailLabel')}" class="lc-esc-input" autocomplete="email">
+        <input type="text" id="lc-esc-name" placeholder="${t('nameLabel')}" class="lc-esc-input" autocomplete="name" value="${existingName}" ${existingName ? 'readonly style="opacity:.7"' : ''}>
+        <input type="email" id="lc-esc-email" placeholder="${t('emailLabel')}" class="lc-esc-input" autocomplete="email" value="${existingEmail}" required>
+        <p id="lc-esc-error" style="font-size:0.72rem; color:#ef4444; margin:4px 0 0; display:none;">Email is required to track your request</p>
         <div style="display:flex; gap:6px; margin-top:6px;">
           <button class="lc-btn-primary lc-btn-sm" id="lc-esc-confirm">${t('humanBtn')}</button>
           <button class="lc-btn-outline lc-btn-sm" id="lc-esc-cancel">${t('cancel')}</button>
@@ -441,16 +444,20 @@
     document.getElementById('lc-esc-confirm').addEventListener('click', async () => {
       const name = document.getElementById('lc-esc-name').value.trim();
       const email = document.getElementById('lc-esc-email').value.trim();
-      if (name || email) {
-        await fetch('/api/chat/session/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: state.token, name, email })
-        });
-        if (state.session) {
-          state.session.visitor_name = name;
-          state.session.visitor_email = email;
-        }
+      // Require at least email for ticket tracking
+      if (!email) {
+        document.getElementById('lc-esc-error').style.display = 'block';
+        document.getElementById('lc-esc-email').focus();
+        return;
+      }
+      await fetch('/api/chat/session/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: state.token, name: name || existingName, email })
+      });
+      if (state.session) {
+        state.session.visitor_name = name || existingName;
+        state.session.visitor_email = email;
       }
       doEscalate();
     });

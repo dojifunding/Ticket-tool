@@ -12,8 +12,10 @@ function renderMarkdown(md) {
 }
 
 function locField(row, field, lang) {
-  if (lang !== 'fr' && row[field + '_' + lang]) return row[field + '_' + lang];
-  return row[field];
+  // Base field is English (primary language)
+  // For other languages, try _XX suffix, fallback to English
+  if (!lang || lang === 'en') return row[field];
+  return row[field + '_' + lang] || row[field];
 }
 
 // ─── Middleware: Load company from slug ──────────────

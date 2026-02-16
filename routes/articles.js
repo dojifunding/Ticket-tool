@@ -121,7 +121,7 @@ router.get('/new', (req, res) => {
 // ─── Create Article ──────────────────────────────────
 router.post('/new', (req, res) => {
   const db = getDb();
-  const { title, title_en, content, content_en, excerpt, excerpt_en, category_id, is_public, is_published, company_id } = req.body;
+  const { title, title_fr, content, content_fr, excerpt, excerpt_fr, category_id, is_public, is_published, company_id } = req.body;
   const user = req.session.user;
   let slug = slugify(title);
 
@@ -130,9 +130,9 @@ router.post('/new', (req, res) => {
   if (existing) slug = slug + '-' + Date.now().toString(36);
 
   db.prepare(`
-    INSERT INTO articles (title, slug, title_en, content, content_en, excerpt, excerpt_en, category_id, company_id, is_public, is_published, author_id)
+    INSERT INTO articles (title, slug, title_fr, content, content_fr, excerpt, excerpt_fr, category_id, company_id, is_public, is_published, author_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(title, slug, title_en || null, content, content_en || null, excerpt || null, excerpt_en || null,
+  `).run(title, slug, title_fr || null, content, content_fr || null, excerpt || null, excerpt_fr || null,
     category_id || null, company_id || null, is_public ? 1 : 0, is_published ? 1 : 0, user.id);
 
   logActivity(user.id, 'created', 'article', 0, title);
@@ -186,26 +186,26 @@ router.get('/categories', (req, res) => {
 
 router.post('/categories', (req, res) => {
   const db = getDb();
-  const { name, name_en, slug, icon, company_id, position } = req.body;
+  const { name, name_fr, name_en, name_es, name_de, slug, icon, company_id, position } = req.body;
   if (!name) return res.redirect('/admin/articles/categories?error=name');
 
   const catSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   const maxPos = db.prepare('SELECT MAX(position) as m FROM article_categories').get();
   const pos = position ? parseInt(position) : ((maxPos?.m || 0) + 1);
 
-  db.prepare('INSERT INTO article_categories (name, name_en, slug, icon, company_id, position) VALUES (?,?,?,?,?,?)')
-    .run(name, name_en || null, catSlug, icon || '📁', company_id ? parseInt(company_id) : null, pos);
+  db.prepare('INSERT INTO article_categories (name, name_fr, name_en, name_es, name_de, slug, icon, company_id, position) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(name, name_fr || null, name_en || null, name_es || null, name_de || null, catSlug, icon || '📁', company_id ? parseInt(company_id) : null, pos);
 
   res.redirect('/admin/articles/categories' + (company_id ? '?company=' + company_id : ''));
 });
 
 router.post('/categories/:id/update', (req, res) => {
   const db = getDb();
-  const { name, name_en, slug, icon, position } = req.body;
+  const { name, name_fr, name_en, name_es, name_de, slug, icon, position } = req.body;
   if (!name) return res.redirect('/admin/articles/categories');
 
-  db.prepare('UPDATE article_categories SET name=?, name_en=?, slug=?, icon=?, position=? WHERE id=?')
-    .run(name, name_en || null, slug || null, icon || '📁', position ? parseInt(position) : 0, req.params.id);
+  db.prepare('UPDATE article_categories SET name=?, name_fr=?, name_en=?, name_es=?, name_de=?, slug=?, icon=?, position=? WHERE id=?')
+    .run(name, name_fr || null, name_en || null, name_es || null, name_de || null, slug || null, icon || '📁', position ? parseInt(position) : 0, req.params.id);
 
   res.redirect('/admin/articles/categories');
 });
@@ -242,13 +242,13 @@ router.get('/:id/edit', (req, res) => {
 // ─── Update Article ──────────────────────────────────
 router.post('/:id/update', (req, res) => {
   const db = getDb();
-  const { title, title_en, content, content_en, excerpt, excerpt_en, category_id, is_public, is_published, company_id } = req.body;
+  const { title, title_fr, content, content_fr, excerpt, excerpt_fr, category_id, is_public, is_published, company_id } = req.body;
 
   db.prepare(`
-    UPDATE articles SET title=?, title_en=?, content=?, content_en=?, excerpt=?, excerpt_en=?,
+    UPDATE articles SET title=?, title_fr=?, content=?, content_fr=?, excerpt=?, excerpt_fr=?,
       category_id=?, company_id=?, is_public=?, is_published=?, updated_at=CURRENT_TIMESTAMP
     WHERE id=?
-  `).run(title, title_en || null, content, content_en || null, excerpt || null, excerpt_en || null,
+  `).run(title, title_fr || null, content, content_fr || null, excerpt || null, excerpt_fr || null,
     category_id || null, company_id || null, is_public ? 1 : 0, is_published ? 1 : 0, req.params.id);
 
   res.redirect('/admin/articles' + (company_id ? '?company=' + company_id : ''));
@@ -296,7 +296,7 @@ router.post('/ai/bulk-publish', (req, res) => {
 
   // Auto-translate in background if enabled
   const autoTranslate = getSetting('auto_translate_articles', '0') === '1';
-  const transLangs = getSetting('translation_languages', 'en').split(',').filter(l => l.trim());
+  const transLangs = getSetting('translation_languages', '').split(',').filter(l => l.trim() && l.trim() !== 'en');
   if (autoTranslate && transLangs.length > 0 && publishedIds.length > 0 && ai.isAvailableForTenant(res.locals.tenant)) {
     // Get company context for domain-specific vocabulary
     let companyContext = '';
@@ -333,7 +333,7 @@ router.post('/:id/translate', async (req, res) => {
   const article = db.prepare('SELECT * FROM articles WHERE id=?').get(req.params.id);
   if (!article) return res.status(404).json({ error: 'Article not found' });
 
-  const transLangs = getSetting('translation_languages', 'en').split(',').filter(l => l.trim());
+  const transLangs = getSetting('translation_languages', '').split(',').filter(l => l.trim() && l.trim() !== 'en');
   if (!transLangs.length) return res.json({ ok: true, message: 'No languages configured' });
 
   // Get company context for domain-specific vocabulary
@@ -360,7 +360,7 @@ router.post('/:id/translate', async (req, res) => {
 router.post('/ai/bulk-translate', async (req, res) => {
   if (!ai.isAvailableForTenant(res.locals.tenant)) return res.status(400).json({ error: 'Service IA indisponible.' });
   const db = getDb();
-  const transLangs = getSetting('translation_languages', 'en').split(',').filter(l => l.trim());
+  const transLangs = getSetting('translation_languages', '').split(',').filter(l => l.trim() && l.trim() !== 'en');
   if (!transLangs.length) return res.json({ ok: true, message: 'No languages configured' });
 
   // Find articles missing translations for ANY configured language
@@ -458,10 +458,17 @@ router.post('/ai/suggest-reply', async (req, res) => {
   try {
     const db = getDb();
     const { ticketId } = req.body;
-    const lang = req.session.lang || 'fr';
+    let lang = req.session.lang || 'fr';
 
     const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(ticketId);
     if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+    // Detect language from linked livechat session (visitor's language)
+    const linkedChat = db.prepare('SELECT lang FROM chat_sessions WHERE ticket_id = ?').get(ticketId);
+    if (linkedChat && linkedChat.lang) {
+      lang = linkedChat.lang;
+      console.log('[AI] Suggest reply — using livechat visitor language:', lang);
+    }
 
     const messages = db.prepare(`
       SELECT tm.*, u.full_name, u.role as user_role

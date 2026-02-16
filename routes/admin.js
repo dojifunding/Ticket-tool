@@ -65,7 +65,7 @@ router.get('/settings', (req, res) => {
   const db = getDb();
 
   const settings = {
-    translation_languages: getSetting('translation_languages', 'en'),
+    translation_languages: getSetting('translation_languages', ''),
     auto_translate_articles: getSetting('auto_translate_articles', '0'),
     ai_livechat_faq_first: getSetting('ai_livechat_faq_first', '1'),
     company_name: getSetting('company_name', ''),
@@ -74,11 +74,11 @@ router.get('/settings', (req, res) => {
     escalation_categories: getSetting('escalation_categories', 'bug,feature_request'),
   };
 
-  const transLangsArr = settings.translation_languages.split(',').filter(l => l.trim());
-  const untranslatedConditions = transLangsArr.map(l => `(title_${l} IS NULL OR title_${l} = '')`).join(' OR ') || "(title_en IS NULL OR title_en = '')";
-  const untranslatedCount = db.prepare(`
+  const transLangsArr = settings.translation_languages.split(',').filter(l => l.trim() && l.trim() !== 'en');
+  const untranslatedConditions = transLangsArr.map(l => `(title_${l} IS NULL OR title_${l} = '')`).join(' OR ') || '0';
+  const untranslatedCount = transLangsArr.length > 0 ? db.prepare(`
     SELECT COUNT(*) as c FROM articles WHERE is_published=1 AND (${untranslatedConditions})
-  `).get().c;
+  `).get().c : 0;
 
   res.render('admin/settings', {
     settings, aiConfigured: ai.isAvailableForTenant(res.locals.tenant), untranslatedCount,
@@ -91,6 +91,9 @@ router.post('/settings', (req, res) => {
   // Handle translation_languages (multiple checkboxes → can be string or array)
   let transLangs = req.body.translation_languages || '';
   if (Array.isArray(transLangs)) transLangs = transLangs.join(',');
+  // Filter out 'en' — English is the primary language, not a translation target
+  transLangs = transLangs.split(',').filter(l => l.trim() && l.trim() !== 'en').join(',');
+  console.log('[Settings] Saving translation_languages:', transLangs || '(none)');
   setSetting('translation_languages', transLangs);
   setSetting('auto_translate_articles', req.body.auto_translate_articles ? '1' : '0');
   setSetting('ai_livechat_faq_first', req.body.ai_livechat_faq_first ? '1' : '0');
@@ -109,6 +112,10 @@ router.post('/settings', (req, res) => {
       .run(req.body.company_name.trim(), req.session.tenantId);
   }
 
+  // If AJAX request, return JSON instead of redirect
+  if (req.headers['x-requested-with'] === 'XMLHttpRequest' || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+    return res.json({ ok: true });
+  }
   res.redirect('/admin/settings?saved=1');
 });
 
@@ -421,6 +428,11 @@ router.post('/companies/:id/workspace', (req, res) => {
   } = req.body;
   const userIds = req.body.user_ids || [];
 
+  // Normalize translation_languages (checkboxes → comma-separated, exclude EN)
+  let tl = req.body.translation_languages || '';
+  if (Array.isArray(tl)) tl = tl.join(',');
+  tl = tl.split(',').filter(l => l.trim() && l.trim() !== 'en').join(',');
+
   // Update company fields
   db.prepare(`
     UPDATE companies SET
@@ -444,7 +456,7 @@ router.post('/companies/:id/workspace', (req, res) => {
     (chatbot_name || 'Assistant').trim(),
     (chatbot_context || '').trim(),
     ai_profile || 'generic',
-    (translation_languages || 'en').trim(),
+    tl,
     req.body.auto_translate_articles ? 1 : 0,
     req.body.ai_livechat_faq_first ? 1 : 0,
     (industry_context || '').trim(),

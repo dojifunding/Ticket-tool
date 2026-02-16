@@ -2,20 +2,20 @@
 
 <div class="page-header">
   <div>
-    <h1 class="page-title">🏷️ Catégories d'articles</h1>
-    <p class="page-subtitle"><%= categories.length %> catégorie(s)</p>
+    <h1 class="page-title">🏷️ Article Categories</h1>
+    <p class="page-subtitle"><%= categories.length %> category(ies)</p>
   </div>
   <div class="header-btns">
     <a href="/admin/articles<%= companyId ? '?company=' + companyId : '' %>" class="btn btn-ghost">← Articles</a>
-    <button class="btn btn-primary" onclick="openModal('newCatModal')">+ Nouvelle catégorie</button>
+    <button class="btn btn-primary" onclick="openModal('newCatModal')">+ New Category</button>
   </div>
 </div>
 
 <% if (typeof companies !== 'undefined' && companies.length > 0) { %>
 <div class="filters-bar" style="margin-bottom:1rem">
   <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
-    <span style="font-size:.85rem;font-weight:600">🏢 Entreprise :</span>
-    <a href="/admin/articles/categories" class="btn btn-xs <%= !companyId ? 'btn-primary' : 'btn-ghost' %>">Toutes</a>
+    <span style="font-size:.85rem;font-weight:600">🏢 Company:</span>
+    <a href="/admin/articles/categories" class="btn btn-xs <%= !companyId ? 'btn-primary' : 'btn-ghost' %>">All</a>
     <% companies.forEach(c => { %>
       <a href="/admin/articles/categories?company=<%= c.id %>" class="btn btn-xs <%= companyId == c.id ? 'btn-primary' : 'btn-ghost' %>"><%= c.name %></a>
     <% }) %>
@@ -27,13 +27,13 @@
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width:50px">Icône</th>
-        <th>Nom</th>
-        <th>Nom EN</th>
+        <th style="width:50px">Icon</th>
+        <th>Name (EN) — Primary</th>
+        <th>Translations</th>
         <th>Slug</th>
-        <th>Entreprise</th>
+        <th>Company</th>
         <th>Articles</th>
-        <th>Position</th>
+        <th>Pos</th>
         <th><%= t.actions %></th>
       </tr>
     </thead>
@@ -42,7 +42,13 @@
         <tr>
           <td style="font-size:1.3rem;text-align:center"><%= cat.icon || '📁' %></td>
           <td><strong><%= cat.name %></strong></td>
-          <td class="text-muted"><%= cat.name_en || '—' %></td>
+          <td>
+            <div class="article-lang-badges" style="gap:.25rem">
+              <span class="lang-badge <%= cat.name_fr ? 'lang-badge-ok' : 'lang-badge-miss' %>" title="<%= cat.name_fr || 'No FR' %>">FR</span>
+              <span class="lang-badge <%= cat.name_es ? 'lang-badge-ok' : 'lang-badge-miss' %>" title="<%= cat.name_es || 'No ES' %>">ES</span>
+              <span class="lang-badge <%= cat.name_de ? 'lang-badge-ok' : 'lang-badge-miss' %>" title="<%= cat.name_de || 'No DE' %>">DE</span>
+            </div>
+          </td>
           <td class="text-muted" style="font-size:.8rem"><%= cat.slug || '—' %></td>
           <td>
             <% if (cat.company_name) { %>
@@ -55,18 +61,18 @@
           <td><%= cat.position || 0 %></td>
           <td>
             <div class="action-btns">
-              <button class="btn btn-xs btn-ghost" title="Modifier"
-                onclick="editCat(<%= cat.id %>, '<%= (cat.name || '').replace(/'/g, "\\'") %>', '<%= (cat.name_en || '').replace(/'/g, "\\'") %>', '<%= cat.slug || '' %>', '<%= cat.icon || '📁' %>', <%= cat.position || 0 %>)">✏️</button>
+              <button class="btn btn-xs btn-ghost" title="Edit"
+                onclick="editCat(<%= cat.id %>, `<%= (cat.name || '').replace(/`/g, '') %>`, `<%= (cat.name_fr || '').replace(/`/g, '') %>`, `<%= (cat.name_es || '').replace(/`/g, '') %>`, `<%= (cat.name_de || '').replace(/`/g, '') %>`, '<%= cat.slug || '' %>', '<%= cat.icon || '📁' %>', <%= cat.position || 0 %>)">✏️</button>
               <form method="POST" action="/admin/articles/categories/<%= cat.id %>/delete" style="display:inline"
-                    onsubmit="return confirm('Supprimer la catégorie « <%= cat.name %> » ? Les <%= cat.article_count || 0 %> article(s) associé(s) seront décatégorisés.')">
-                <button type="submit" class="btn btn-xs btn-ghost" title="Supprimer">🗑️</button>
+                    onsubmit="return confirm('Delete category &quot;<%= cat.name %>&quot;? The <%= cat.article_count || 0 %> linked article(s) will be uncategorized.')">
+                <button type="submit" class="btn btn-xs btn-ghost" title="Delete">🗑️</button>
               </form>
             </div>
           </td>
         </tr>
       <% }) %>
       <% if (categories.length === 0) { %>
-        <tr><td colspan="8" class="empty-table">Aucune catégorie</td></tr>
+        <tr><td colspan="8" class="empty-table">No categories yet</td></tr>
       <% } %>
     </tbody>
   </table>
@@ -76,22 +82,34 @@
 <div class="modal-overlay" id="newCatModal">
   <div class="modal">
     <div class="modal-header">
-      <h2>Nouvelle catégorie</h2>
+      <h2>New Category</h2>
       <button class="modal-close" onclick="closeModal('newCatModal')">×</button>
     </div>
     <div class="modal-body">
       <form method="POST" action="/admin/articles/categories">
         <div class="form-group">
-          <label>Nom *</label>
-          <input type="text" name="name" required placeholder="Ex: Démarrage, Facturation...">
+          <label>🇬🇧 Name (English) * — Primary</label>
+          <input type="text" name="name" required placeholder="e.g. Getting Started, Billing...">
+          <p class="text-muted" style="font-size:.75rem;margin-top:.25rem">Used for the URL slug and as the default display name</p>
         </div>
-        <div class="form-group">
-          <label>Nom (EN)</label>
-          <input type="text" name="name_en" placeholder="English name">
+        <div style="border:1px solid var(--border);border-radius:var(--radius);padding:.75rem;margin-bottom:1rem">
+          <p style="font-size:.8rem;font-weight:600;margin-bottom:.5rem">🌐 Translations (optional)</p>
+          <div class="form-group" style="margin-bottom:.5rem">
+            <label style="font-size:.85rem">🇫🇷 French</label>
+            <input type="text" name="name_fr" placeholder="Nom en français">
+          </div>
+          <div class="form-group" style="margin-bottom:.5rem">
+            <label style="font-size:.85rem">🇪🇸 Spanish</label>
+            <input type="text" name="name_es" placeholder="Nombre en español">
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label style="font-size:.85rem">🇩🇪 German</label>
+            <input type="text" name="name_de" placeholder="Name auf Deutsch">
+          </div>
         </div>
         <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
           <div class="form-group">
-            <label>Icône</label>
+            <label>Icon</label>
             <input type="text" name="icon" value="📁" placeholder="📁" style="font-size:1.2rem">
           </div>
           <div class="form-group">
@@ -100,14 +118,14 @@
           </div>
         </div>
         <div class="form-group">
-          <label>Slug (auto si vide)</label>
-          <input type="text" name="slug" placeholder="auto-generated">
+          <label>Slug (auto if empty)</label>
+          <input type="text" name="slug" placeholder="auto-generated-from-name">
         </div>
         <% if (typeof companies !== 'undefined' && companies.length > 0) { %>
         <div class="form-group">
-          <label>Entreprise</label>
+          <label>Company</label>
           <select name="company_id">
-            <option value="">— Globale —</option>
+            <option value="">— Global —</option>
             <% companies.forEach(c => { %>
               <option value="<%= c.id %>" <%= companyId == c.id ? 'selected' : '' %>><%= c.name %></option>
             <% }) %>
@@ -115,8 +133,8 @@
         </div>
         <% } %>
         <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
-          <button type="button" class="btn btn-ghost" onclick="closeModal('newCatModal')">Annuler</button>
-          <button type="submit" class="btn btn-primary">Créer</button>
+          <button type="button" class="btn btn-ghost" onclick="closeModal('newCatModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create</button>
         </div>
       </form>
     </div>
@@ -127,22 +145,33 @@
 <div class="modal-overlay" id="editCatModal">
   <div class="modal">
     <div class="modal-header">
-      <h2>Modifier la catégorie</h2>
+      <h2>Edit Category</h2>
       <button class="modal-close" onclick="closeModal('editCatModal')">×</button>
     </div>
     <div class="modal-body">
       <form method="POST" id="editCatForm">
         <div class="form-group">
-          <label>Nom *</label>
+          <label>🇬🇧 Name (English) * — Primary</label>
           <input type="text" name="name" id="editName" required>
         </div>
-        <div class="form-group">
-          <label>Nom (EN)</label>
-          <input type="text" name="name_en" id="editNameEn">
+        <div style="border:1px solid var(--border);border-radius:var(--radius);padding:.75rem;margin-bottom:1rem">
+          <p style="font-size:.8rem;font-weight:600;margin-bottom:.5rem">🌐 Translations</p>
+          <div class="form-group" style="margin-bottom:.5rem">
+            <label style="font-size:.85rem">🇫🇷 French</label>
+            <input type="text" name="name_fr" id="editNameFr">
+          </div>
+          <div class="form-group" style="margin-bottom:.5rem">
+            <label style="font-size:.85rem">🇪🇸 Spanish</label>
+            <input type="text" name="name_es" id="editNameEs">
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label style="font-size:.85rem">🇩🇪 German</label>
+            <input type="text" name="name_de" id="editNameDe">
+          </div>
         </div>
         <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
           <div class="form-group">
-            <label>Icône</label>
+            <label>Icon</label>
             <input type="text" name="icon" id="editIcon" style="font-size:1.2rem">
           </div>
           <div class="form-group">
@@ -155,8 +184,8 @@
           <input type="text" name="slug" id="editSlug">
         </div>
         <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
-          <button type="button" class="btn btn-ghost" onclick="closeModal('editCatModal')">Annuler</button>
-          <button type="submit" class="btn btn-primary">Enregistrer</button>
+          <button type="button" class="btn btn-ghost" onclick="closeModal('editCatModal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
         </div>
       </form>
     </div>
@@ -167,10 +196,12 @@
 function openModal(id) { document.getElementById(id).classList.add('active'); }
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 
-function editCat(id, name, nameEn, slug, icon, position) {
+function editCat(id, name, nameFr, nameEs, nameDe, slug, icon, position) {
   document.getElementById('editCatForm').action = '/admin/articles/categories/' + id + '/update';
   document.getElementById('editName').value = name;
-  document.getElementById('editNameEn').value = nameEn;
+  document.getElementById('editNameFr').value = nameFr;
+  document.getElementById('editNameEs').value = nameEs;
+  document.getElementById('editNameDe').value = nameDe;
   document.getElementById('editSlug').value = slug;
   document.getElementById('editIcon').value = icon;
   document.getElementById('editPosition').value = position;

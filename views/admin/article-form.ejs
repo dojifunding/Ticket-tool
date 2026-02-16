@@ -10,46 +10,46 @@
 <div class="form-container form-container-wide">
   <form method="POST" action="<%= article ? '/admin/articles/' + article.id + '/update' : '/admin/articles/new' %>" class="form-card">
 
-    <!-- FR Title + EN Title -->
+    <!-- EN Title (Primary) + FR Title -->
     <div class="form-row">
       <div class="form-group form-group-lg">
-        <label>🇫🇷 <%= t.articles_form_title_fr %> *</label>
-        <input type="text" name="title" required placeholder="<%= t.articles_form_title_placeholder %>"
-               value="<%= article ? article.title : '' %>" id="articleTitleFr">
+        <label>🇬🇧 Title (English) * — Primary</label>
+        <input type="text" name="title" required placeholder="Article title in English"
+               value="<%= article ? article.title : '' %>" id="articleTitle">
       </div>
       <div class="form-group form-group-lg">
-        <label>🇬🇧 <%= t.articles_form_title_en %></label>
-        <input type="text" name="title_en" placeholder="English title (optional)"
-               value="<%= article ? (article.title_en || '') : '' %>" id="articleTitleEn">
+        <label>🇫🇷 Title (French)</label>
+        <input type="text" name="title_fr" placeholder="Titre en français (optionnel)"
+               value="<%= article ? (article.title_fr || '') : '' %>" id="articleTitleFr">
       </div>
     </div>
 
-    <!-- FR Excerpt + EN Excerpt -->
+    <!-- EN Excerpt (Primary) + FR Excerpt -->
     <div class="form-row">
       <div class="form-group">
-        <label>🇫🇷 <%= t.articles_form_excerpt_fr %></label>
-        <input type="text" name="excerpt" placeholder="<%= t.articles_form_excerpt_placeholder %>"
+        <label>🇬🇧 Excerpt (English)</label>
+        <input type="text" name="excerpt" placeholder="Short description in English"
                value="<%= article ? (article.excerpt || '') : '' %>">
       </div>
       <div class="form-group">
-        <label>🇬🇧 <%= t.articles_form_excerpt_en %></label>
-        <input type="text" name="excerpt_en" placeholder="Short excerpt in English"
-               value="<%= article ? (article.excerpt_en || '') : '' %>">
+        <label>🇫🇷 Excerpt (French)</label>
+        <input type="text" name="excerpt_fr" placeholder="Description courte en français"
+               value="<%= article ? (article.excerpt_fr || '') : '' %>">
       </div>
+    </div>
+
+    <!-- EN Content (Primary) -->
+    <div class="form-group">
+      <label>🇬🇧 Content (English) * <span class="form-hint">(Markdown)</span></label>
+      <textarea name="content" rows="12" required placeholder="Write your article content in English..."
+                id="articleContent"><%= article ? article.content : '' %></textarea>
     </div>
 
     <!-- FR Content -->
     <div class="form-group">
-      <label>🇫🇷 <%= t.articles_form_content_fr %> * <span class="form-hint">(Markdown)</span></label>
-      <textarea name="content" rows="12" required placeholder="<%= t.articles_form_content_placeholder %>"
-                id="articleContentFr"><%= article ? article.content : '' %></textarea>
-    </div>
-
-    <!-- EN Content -->
-    <div class="form-group">
-      <label>🇬🇧 <%= t.articles_form_content_en %> <span class="form-hint">(Markdown)</span></label>
-      <textarea name="content_en" rows="8" placeholder="English content (optional)"
-                id="articleContentEn"><%= article ? (article.content_en || '') : '' %></textarea>
+      <label>🇫🇷 Content (French) <span class="form-hint">(Markdown)</span></label>
+      <textarea name="content_fr" rows="8" placeholder="Contenu en français (optionnel)"
+                id="articleContentFr"><%= article ? (article.content_fr || '') : '' %></textarea>
     </div>
 
     <!-- Category + Options -->

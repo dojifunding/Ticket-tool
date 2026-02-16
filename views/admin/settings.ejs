@@ -60,20 +60,20 @@
 
   <!-- ═══ Translation Settings ═══ -->
   <div class="card">
-    <div class="card-header"><h2>🌐 Traduction automatique des articles</h2></div>
+    <div class="card-header"><h2>🌐 Automatic Article Translation</h2></div>
     <div class="card-body">
       <form method="POST" action="/admin/settings">
         <div class="form-group">
-          <label><strong>Langues de traduction</strong></label>
-          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0.5rem">Sélectionnez les langues dans lesquelles les articles FAQ seront traduits automatiquement.</p>
+          <label><strong>Translation Languages</strong></label>
+          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0.5rem">English is the primary language. Select which languages articles should be translated into.</p>
           <div class="checkbox-grid">
-            <% const langs = { en: '🇬🇧 Anglais', es: '🇪🇸 Espagnol', de: '🇩🇪 Allemand' }; %>
-            <% const activeLangs = settings.translation_languages.split(','); %>
-            <% for (const [code, name] of Object.entries(langs)) { %>
+            <% const langs = { fr: '🇫🇷 French', es: '🇪🇸 Spanish', de: '🇩🇪 German' }; %>
+            <% const activeLangs = (settings.translation_languages || '').split(',').map(l => l.trim()).filter(Boolean); %>
+            <% for (const [code, label] of Object.entries(langs)) { %>
               <label class="checkbox-item">
                 <input type="checkbox" name="translation_languages" value="<%= code %>"
                   <%= activeLangs.includes(code) ? 'checked' : '' %>>
-                <span><%= name %></span>
+                <span><%= label %></span>
               </label>
             <% } %>
           </div>
@@ -83,18 +83,18 @@
           <label class="toggle-label">
             <input type="checkbox" name="auto_translate_articles" value="1"
               <%= settings.auto_translate_articles === '1' ? 'checked' : '' %>>
-            <span><strong>Traduction automatique à la publication</strong></span>
+            <span><strong>Auto-translate on publish</strong></span>
           </label>
-          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0">Quand activé, les articles sont traduits automatiquement dans les langues sélectionnées lors de la publication.</p>
+          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0">When enabled, articles are automatically translated into selected languages when published.</p>
         </div>
 
         <div class="form-group" style="margin-top:1.5rem">
           <label class="toggle-label">
             <input type="checkbox" name="ai_livechat_faq_first" value="1"
               <%= settings.ai_livechat_faq_first === '1' ? 'checked' : '' %>>
-            <span><strong>🔋 FAQ-first (économie IA)</strong></span>
+            <span><strong>🔋 FAQ-first (AI cost saving)</strong></span>
           </label>
-          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0">Quand activé, le livechat cherche d'abord une réponse dans les articles FAQ <strong>sans appeler l'IA</strong>. L'IA n'est sollicitée que si aucun article ne correspond.</p>
+          <p class="text-muted" style="font-size:0.85rem;margin:0.25rem 0 0">When enabled, livechat first looks for answers in FAQ articles <strong>without calling AI</strong>. AI is only used if no article matches.</p>
         </div>
 
         <hr style="margin:1.5rem 0;border-color:var(--border)">
@@ -267,6 +267,17 @@ async function bulkTranslate() {
   const progress = document.getElementById('translateProgress');
   const fill = document.getElementById('transFill');
   const text = document.getElementById('transText');
+
+  // Auto-save settings form first (so translation_languages are persisted)
+  const settingsForm = document.querySelector('form[action="/admin/settings"]');
+  if (settingsForm) {
+    const formData = new FormData(settingsForm);
+    await fetch('/admin/settings', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      body: new URLSearchParams(formData)
+    });
+  }
 
   btn.querySelector('.btn-text').style.display = 'none';
   btn.querySelector('.btn-loading').style.display = 'inline';

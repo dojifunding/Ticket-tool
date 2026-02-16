@@ -333,7 +333,7 @@ function initTenantSchema(db) {
 
   db.exec(`CREATE TABLE IF NOT EXISTS article_categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL,
-    name_en TEXT, name_es TEXT, name_de TEXT, icon TEXT DEFAULT '📄', position INTEGER DEFAULT 0,
+    name_en TEXT, name_fr TEXT, name_es TEXT, name_de TEXT, icon TEXT DEFAULT '📄', position INTEGER DEFAULT 0,
     company_id INTEGER REFERENCES companies(id),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
@@ -365,6 +365,7 @@ function initTenantSchema(db) {
     status TEXT DEFAULT 'ai' CHECK(status IN ('ai','human','closed')),
     ticket_id INTEGER REFERENCES tickets(id),
     company_id INTEGER REFERENCES companies(id),
+    lang TEXT DEFAULT 'fr',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
@@ -410,6 +411,7 @@ function initTenantSchema(db) {
   try {
     const catCols = db.pragma('table_info(article_categories)').map(c => c.name);
     if (!catCols.includes('company_id')) db.exec('ALTER TABLE article_categories ADD COLUMN company_id INTEGER REFERENCES companies(id)');
+    if (!catCols.includes('name_fr')) db.exec('ALTER TABLE article_categories ADD COLUMN name_fr TEXT');
   } catch (e) { /* exists */ }
   try {
     const kbCols = db.pragma('table_info(knowledge_base)').map(c => c.name);
@@ -418,7 +420,8 @@ function initTenantSchema(db) {
   try {
     const chatCols = db.pragma('table_info(chat_sessions)').map(c => c.name);
     if (!chatCols.includes('company_id')) db.exec('ALTER TABLE chat_sessions ADD COLUMN company_id INTEGER REFERENCES companies(id)');
-  } catch (e) { /* exists */ }
+    if (!chatCols.includes('lang')) db.exec("ALTER TABLE chat_sessions ADD COLUMN lang TEXT DEFAULT 'fr'");
+  } catch (e) { console.log('[DB] chat_sessions migration:', e.message); }
   try {
     const sugCols = db.pragma('table_info(ai_article_suggestions)').map(c => c.name);
     if (!sugCols.includes('company_id')) db.exec('ALTER TABLE ai_article_suggestions ADD COLUMN company_id INTEGER REFERENCES companies(id)');

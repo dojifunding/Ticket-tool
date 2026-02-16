@@ -31,7 +31,7 @@ function safeGetDb(res) {
 // ─── Get or Create Session ───────────────────────────
 router.post('/session', (req, res) => {
   const db = safeGetDb(res); if (!db) return;
-  const { token, name, email, company_slug } = req.body;
+  const { token, name, email, company_slug, lang: clientLang } = req.body;
 
   if (token) {
     const session = db.prepare('SELECT * FROM chat_sessions WHERE visitor_token = ?').get(token);
@@ -48,15 +48,25 @@ router.post('/session', (req, res) => {
     if (comp) companyId = comp.id;
   }
 
+  // Determine language: client preference > session > default
+  const sessionLang = clientLang || req.session?.lang || 'fr';
+
   // Create new session
   const newToken = crypto.randomUUID();
-  db.prepare('INSERT INTO chat_sessions (visitor_token, visitor_name, visitor_email, company_id) VALUES (?,?,?,?)')
-    .run(newToken, name || null, email || null, companyId);
+  try {
+    db.prepare('INSERT INTO chat_sessions (visitor_token, visitor_name, visitor_email, company_id, lang) VALUES (?,?,?,?,?)')
+      .run(newToken, name || null, email || null, companyId, sessionLang);
+  } catch (e) {
+    // Fallback if lang column doesn't exist yet
+    db.prepare('INSERT INTO chat_sessions (visitor_token, visitor_name, visitor_email, company_id) VALUES (?,?,?,?)')
+      .run(newToken, name || null, email || null, companyId);
+  }
 
   const session = db.prepare('SELECT * FROM chat_sessions WHERE visitor_token = ?').get(newToken);
+  if (!session) return res.status(500).json({ error: 'Failed to create chat session' });
 
-  // Send welcome message
-  const lang = req.session?.lang || 'fr';
+  // Send welcome message in the right language
+  const lang = sessionLang;
   const t = getTranslations(lang);
   db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
     .run(session.id, 'ai', 'Assistant', t.chat_welcome_msg);
@@ -222,7 +232,7 @@ router.post('/message', async (req, res) => {
 
         // High confidence threshold: need significant keyword overlap
         if (bestMatch && bestScore >= 4 && qKeywords.length >= 2) {
-          const lang = req.session?.lang || 'fr';
+          const lang = session.lang || req.session?.lang || 'fr';
           // Build company-scoped article URL
           let articleUrl = '/help/article/' + bestMatch.slug;
           if (bestMatch.company_id) {
@@ -238,9 +248,11 @@ router.post('/message', async (req, res) => {
             const cut = cleanContent.lastIndexOf('.', 1200);
             cleanContent = cleanContent.substring(0, cut > 800 ? cut + 1 : 1200) + '...';
           }
-          const faqReply = lang === 'fr'
-            ? `D'après notre FAQ :\n\n**${bestMatch.title}**\n\n${cleanContent}\n\n🔗 [Lire l'article complet](${articleUrl})`
-            : `From our FAQ:\n\n**${bestMatch.title}**\n\n${cleanContent}\n\n🔗 [Read the full article](${articleUrl})`;
+          const faqIntro = { fr: "D'après notre FAQ", es: 'Según nuestro FAQ', de: 'Laut unserem FAQ' };
+          const faqLink = { fr: "Lire l'article complet", es: 'Leer el artículo completo', de: 'Den vollständigen Artikel lesen' };
+          const intro = faqIntro[lang] || 'From our FAQ';
+          const linkText = faqLink[lang] || 'Read the full article';
+          const faqReply = `${intro}:\n\n**${bestMatch.title}**\n\n${cleanContent}\n\n🔗 [${linkText}](${articleUrl})`;
 
           db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
             .run(session.id, 'ai', 'Assistant', faqReply);
@@ -357,7 +369,7 @@ router.post('/message', async (req, res) => {
       // Get chat history (last 10 messages)
       const history = db.prepare('SELECT sender_type, content FROM chat_messages WHERE session_id=? ORDER BY created_at DESC LIMIT 10').all(session.id).reverse();
 
-      const lang = req.session?.lang || 'fr';
+      const lang = session.lang || req.session?.lang || 'fr';
 
       // Use company-specific context if available
       let companyName = getSetting('company_name', '');
@@ -371,7 +383,7 @@ router.post('/message', async (req, res) => {
           chatbotName = comp.chatbot_name || 'Assistant';
         }
       }
-      console.log('[Chat] AI — Keywords:', keywords.join(', '), '| KB context:', knowledgeContext.length, 'chars | FAQ articles:', faqArticles.length, '| Company:', companyName || '(default)');
+      console.log('[Chat] AI — Keywords:', keywords.join(', '), '| KB context:', knowledgeContext.length, 'chars | FAQ articles:', faqArticles.length, '| Company:', companyName || '(default)', '| Lang:', lang);
 
       const aiResponse = await ai.livechatReply(history, knowledgeContext, faqContext, lang, companyName, chatbotContext, res.locals.tenant);
 
@@ -383,7 +395,7 @@ router.post('/message', async (req, res) => {
       return res.json({ ok: true, mode: 'ai', aiMessage: { sender_type: 'ai', sender_name: 'Assistant', content: aiResponse, created_at: new Date().toISOString() } });
     } catch (e) {
       console.error('[Chat] AI error:', e.message);
-      const lang = req.session?.lang || 'fr';
+      const lang = session.lang || req.session?.lang || 'fr';
       const t = getTranslations(lang);
       const fallback = e.message.startsWith('BILLING:')
         ? (lang === 'fr' ? 'Service temporairement indisponible. Souhaitez-vous parler à un agent ?' : 'Service temporarily unavailable. Would you like to speak with an agent?')
@@ -396,7 +408,7 @@ router.post('/message', async (req, res) => {
 
   // AI not available — return helpful fallback message
   console.log('[Chat] AI not available — returning fallback');
-  const lang = req.session?.lang || 'fr';
+  const lang = session.lang || req.session?.lang || 'fr';
   const fallbackMsg = lang === 'fr'
     ? 'Notre assistant automatique est indisponible pour le moment. Cliquez sur "Parler à un humain" pour être mis en relation avec un agent.'
     : 'Our automated assistant is currently unavailable. Click "Talk to a human" to be connected with an agent.';
@@ -415,10 +427,8 @@ router.post('/escalate', (req, res) => {
   if (!session) return res.status(404).json({ error: 'Session not found' });
   if (session.status === 'human') return res.json({ ok: true, ticketRef: db.prepare('SELECT reference FROM tickets WHERE id=?').get(session.ticket_id)?.reference });
 
-  const lang = req.session?.lang || 'fr';
+  const lang = session.lang || req.session?.lang || 'fr';
   const t = getTranslations(lang);
-
-  // Create a ticket from this chat
   const reference = generateTicketRef();
   const chatHistory = db.prepare('SELECT sender_type, sender_name, content FROM chat_messages WHERE session_id=? ORDER BY created_at ASC').all(session.id);
   const historyText = chatHistory.map(m => `[${m.sender_name}]: ${m.content}`).join('\n');
@@ -484,7 +494,7 @@ router.post('/close', (req, res) => {
     .run('closed', token);
 
   // Add closing system message
-  const lang = req.session?.lang || 'fr';
+  const lang = session.lang || req.session?.lang || 'fr';
   const t = getTranslations(lang);
   db.prepare('INSERT INTO chat_messages (session_id, sender_type, sender_name, content) VALUES (?,?,?,?)')
     .run(session.id, 'ai', 'System', t.chat_closed_by_visitor);
